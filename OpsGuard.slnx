@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/OpsGuard.App/OpsGuard.App.csproj" />
+    <Project Path="src/OpsGuard.Core/OpsGuard.Core.csproj" />
+    <Project Path="src/OpsGuard.Infrastructure/OpsGuard.Infrastructure.csproj" />
+    <Project Path="src/OpsGuard.Plugins/OpsGuard.Plugins.csproj" />
+    <Project Path="src/OpsGuard.Web/OpsGuard.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/OpsGuard.Tests/OpsGuard.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,38 @@
+{
+  "ComposeProjectName": "zdmj",
+  "Host": {
+    "DisplayName": "本机 Docker 宿主机"
+  },
+  "Services": [
+    {
+      "Id": "backend",
+      "DisplayName": "后端 API",
+      "ContainerName": "zdmj-backend",
+      "ComposeService": "backend",
+      "HealthUrl": "http://127.0.0.1:8080/actuator/health",
+      "Description": "Spring Boot 后端，Docker 映射 8080"
+    },
+    {
+      "Id": "web-gateway",
+      "DisplayName": "前端 Nginx",
+      "ContainerName": "zdmj-frontend-main",
+      "ComposeService": "nginx",
+      "HealthUrl": "http://127.0.0.1:80",
+      "Description": "Nginx 静态资源与反代"
+    },
+    {
+      "Id": "postgres",
+      "DisplayName": "PostgreSQL",
+      "ContainerName": "pgsql",
+      "ComposeService": "postgres",
+      "Description": "仅查容器状态与 logs"
+    },
+    {
+      "Id": "redis",
+      "DisplayName": "Redis",
+      "ContainerName": "redis",
+      "ComposeService": "redis",
+      "Description": "仅查容器状态与 logs"
+    }
+  ]
+}

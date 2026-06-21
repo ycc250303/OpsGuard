@@ -1,0 +1,70 @@
+name: CD
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: opsguard-server-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: 部署 App + Web 至生产机
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: 测试
+        run: |
+          dotnet restore
+          dotnet test -c Release
+
+      - name: 配置 SSH
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.OPSGUARD_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.OPSGUARD_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: 生成部署用 .env
+        if: ${{ secrets.DASHSCOPE_API_KEY != '' }}
+        run: |
+          umask 077
+          printf 'DASHSCOPE_API_KEY=%s\n' "${{ secrets.DASHSCOPE_API_KEY }}" > .env.ci
+          echo "ENV_FILE=$GITHUB_WORKSPACE/.env.ci" >> "$GITHUB_ENV"
+
+      - name: 部署 App + Web
+        env:
+          SSH_KEY: ~/.ssh/deploy_key
+          OPSGUARD_HOST: root@${{ secrets.OPSGUARD_SSH_HOST }}
+        run: |
+          chmod +x deploy/deploy-app.sh deploy/deploy-web.sh deploy/deploy-all.sh
+          ./deploy/deploy-all.sh
+
+      - name: 冒烟（服务器 App）
+        env:
+          SSH_KEY: ~/.ssh/deploy_key
+          OPSGUARD_HOST: root@${{ secrets.OPSGUARD_SSH_HOST }}
+        run: |
+          ssh -i "$SSH_KEY" -o BatchMode=yes "$OPSGUARD_HOST" \
+            '/root/.dotnet/dotnet /opt/opsguard/OpsGuard.App.dll \
+              --topology /opt/opsguard/compose-topology.production.json \
+              --smoke'
+
+      - name: 健康检查（Web 5229）
+        env:
+          SSH_KEY: ~/.ssh/deploy_key
+          OPSGUARD_HOST: root@${{ secrets.OPSGUARD_SSH_HOST }}
+        run: |
+          ssh -i "$SSH_KEY" -o BatchMode=yes "$OPSGUARD_HOST" \
+            'curl -sf -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:5229/'

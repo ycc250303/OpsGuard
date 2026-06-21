@@ -1,0 +1,19 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.DotSettings.user
+
+## OpsGuard secrets / local config
+docs/compose-topology.production.json
+.env
+appsettings.Development.json
+appsettings.Local.json
+
+## IDE
+.idea/
+.cursor/
+*.swp
+.DS_Store

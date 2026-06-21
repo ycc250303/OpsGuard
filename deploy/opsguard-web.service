@@ -1,0 +1,16 @@
+[Unit]
+Description=OpsGuard Web UI (Blazor Server)
+After=network.target docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/opsguard-web
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=DOTNET_ROOT=/root/.dotnet
+Environment=PATH=/root/.dotnet:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/root/.dotnet/dotnet /opt/opsguard-web/OpsGuard.Web.dll --topology /opt/opsguard/compose-topology.production.json --urls http://0.0.0.0:5229
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

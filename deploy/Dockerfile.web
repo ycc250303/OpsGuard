@@ -1,0 +1,6 @@
+FROM mcr.microsoft.com/dotnet/aspnet:10.0
+WORKDIR /app
+COPY . .
+ENV ASPNETCORE_ENVIRONMENT=Production
+EXPOSE 5229
+ENTRYPOINT ["dotnet", "OpsGuard.Web.dll"]

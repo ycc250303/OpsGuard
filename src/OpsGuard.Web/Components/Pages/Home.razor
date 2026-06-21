@@ -1,0 +1,149 @@
+@page "/"
+@rendermode InteractiveServer
+@using OpsGuard.Core.Memory
+@inject DiagnosticSessionService Session
+@inject WebAppInfo AppInfo
+@implements IDisposable
+
+<PageTitle>OpsGuard 运维诊断</PageTitle>
+
+<div class="ops-page">
+    <header class="ops-header">
+        <div>
+            <h1>OpsGuard</h1>
+            <p class="ops-subtitle">Linux 主机 + Docker Compose 运维诊断 Agent</p>
+        </div>
+        <div class="ops-meta">
+            <span class="ops-badge">Collector → Analyzer → Advisor</span>
+            <span class="ops-topology" title="@AppInfo.TopologyPath">拓扑: @Path.GetFileName(AppInfo.TopologyPath)</span>
+            <span class="ops-topology">本机: @_machineName (@_osPlatform)</span>
+        </div>
+    </header>
+
+    <section class="ops-chat" @ref="_chatContainer">
+        @if (Session.Messages.Count == 0)
+        {
+            <div class="ops-empty">
+                <p>输入自然语言问题开始诊断，例如：</p>
+                <ul>
+                    <li>检查本机和所有配置的 compose 服务</li>
+                    <li>backend 容器运行正常吗？</li>
+                    <li>web-gateway 健康检查失败</li>
+                </ul>
+                <p class="ops-hint">检测对象为<strong>运行本程序的服务器</strong>（读本地 Docker / Host 指标）。</p>
+            </div>
+        }
+        else
+        {
+            @foreach (var message in Session.Messages)
+            {
+                <article class="ops-message @(message.IsUser ? "user" : "assistant")">
+                    <div class="ops-message-role">@(message.IsUser ? "你" : "OpsGuard")</div>
+                    @if (message.IsUser)
+                    {
+                        <div class="ops-message-body">@message.Content</div>
+                    }
+                    else
+                    {
+                        <div class="ops-message-body markdown">@((MarkupString)MarkdownRenderer.ToHtml(message.Content))</div>
+                    }
+                    <time class="ops-message-time">@message.At.ToLocalTime().ToString("HH:mm:ss")</time>
+                </article>
+            }
+        }
+
+        @if (_isRunning)
+        {
+            <div class="ops-loading">
+                <span class="ops-spinner"></span>
+                正在诊断（Collector 采集 → Analyzer 分析 → Advisor 报告）…
+            </div>
+        }
+    </section>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="ops-error">@_error</div>
+    }
+
+    <footer class="ops-input-bar">
+        <textarea @bind="_input"
+                  @bind:event="oninput"
+                  @onkeydown="HandleKeyDown"
+                  placeholder="描述你要排查的问题…"
+                  rows="2"
+                  disabled="@_isRunning"></textarea>
+        <div class="ops-actions">
+            <button type="button" class="btn-secondary" @onclick="ClearChatAsync" disabled="@(_isRunning || Session.Messages.Count == 0)">清空</button>
+            <button type="button" class="btn-primary" @onclick="SendAsync" disabled="@(_isRunning || string.IsNullOrWhiteSpace(_input))">发送</button>
+        </div>
+    </footer>
+</div>
+
+@code {
+    private ElementReference _chatContainer;
+    private string _input = string.Empty;
+    private string? _error;
+    private bool _isRunning;
+    private CancellationTokenSource? _cts;
+    private readonly string _machineName = OpsGuardRuntimeContext.Current().MachineName;
+    private readonly string _osPlatform = OpsGuardRuntimeContext.Current().OsPlatform;
+
+    private async Task SendAsync()
+    {
+        _error = null;
+        var question = _input.Trim();
+        if (question.Length == 0 || _isRunning)
+        {
+            return;
+        }
+
+        _input = string.Empty;
+        _isRunning = true;
+        _cts = new CancellationTokenSource(TimeSpan.FromMinutes(15));
+        StateHasChanged();
+
+        try
+        {
+            await Session.AskAsync(question, _cts.Token);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _isRunning = false;
+            _cts?.Dispose();
+            _cts = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ClearChatAsync()
+    {
+        _error = null;
+        try
+        {
+            Session.Clear();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+        {
+            await SendAsync();
+        }
+    }
+
+    public void Dispose()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+    }
+}
