@@ -37,11 +37,14 @@ jobs:
           ssh-keyscan -H "${{ secrets.OPSGUARD_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
 
       - name: 生成部署用 .env
-        if: ${{ secrets.DASHSCOPE_API_KEY != '' }}
+        env:
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
         run: |
-          umask 077
-          printf 'DASHSCOPE_API_KEY=%s\n' "${{ secrets.DASHSCOPE_API_KEY }}" > .env.ci
-          echo "ENV_FILE=$GITHUB_WORKSPACE/.env.ci" >> "$GITHUB_ENV"
+          if [ -n "${DASHSCOPE_API_KEY}" ]; then
+            umask 077
+            printf 'DASHSCOPE_API_KEY=%s\n' "$DASHSCOPE_API_KEY" > .env.ci
+            echo "ENV_FILE=$GITHUB_WORKSPACE/.env.ci" >> "$GITHUB_ENV"
+          fi
 
       - name: 部署 App + Web
         env:
