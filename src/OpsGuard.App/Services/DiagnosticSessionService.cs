@@ -3,11 +3,15 @@ using Microsoft.SemanticKernel.Agents;
 using Microsoft.SemanticKernel.ChatCompletion;
 using OpsGuard.Core.Agents;
 using OpsGuard.Core.Configuration;
+using OpsGuard.Core.Streaming;
+using OpsGuard.Infrastructure.Streaming;
 
 namespace OpsGuard.App.Services;
 
 public sealed class DiagnosticSessionService
 {
+    private const int StreamNotifyIntervalMs = 80;
+
     private readonly OpsGuardOrchestrator _orchestrator;
     private readonly AgentOptions _agentOptions;
     private readonly ChatHistory _chatHistory = new();
@@ -53,6 +57,35 @@ public sealed class DiagnosticSessionService
         _messages.Add(ChatMessage.Assistant(string.Empty));
         Notify(onUpdated);
 
+        var streamBuilder = new DiagnosticStreamBuilder();
+        var advisorReport = string.Empty;
+        var lastNotifyAt = DateTime.UtcNow;
+
+        void ApplyChunk(DiagnosticChunk chunk)
+        {
+            streamBuilder.Apply(chunk);
+
+            if (chunk.Stage == "Advisor"
+                && chunk.Phase == DiagnosticChunkPhase.Completed
+                && !string.IsNullOrWhiteSpace(chunk.Content))
+            {
+                advisorReport = chunk.Content.Trim();
+            }
+
+            var now = DateTime.UtcNow;
+            var shouldNotify = chunk.Phase is not DiagnosticChunkPhase.Delta
+                || (now - lastNotifyAt).TotalMilliseconds >= StreamNotifyIntervalMs;
+
+            if (!shouldNotify)
+            {
+                return;
+            }
+
+            lastNotifyAt = now;
+            _messages[assistantIndex] = ChatMessage.Assistant(streamBuilder.BuildMarkdown(streaming: true));
+            Notify(onUpdated);
+        }
+
         try
         {
             _chatHistory.AddUserMessage(userInput);
@@ -66,23 +99,21 @@ public sealed class DiagnosticSessionService
                 ? $"## 用户问题\n{userInput}"
                 : $"{historySummary}\n\n## 用户问题\n{userInput}";
 
-            var chunks = new List<DiagnosticChunk>();
-            var advisorReport = string.Empty;
-
-            await foreach (var chunk in _orchestrator.RunStreamingAsync(taskPrompt, cancellationToken))
+            DiagnosticStreamContext.SetNotifier(ApplyChunk);
+            try
             {
-                chunks.Add(chunk);
-                _messages[assistantIndex] = ChatMessage.Assistant(
-                    OpsGuardOrchestrator.BuildStreamingMarkdown(chunks));
-                Notify(onUpdated);
-
-                if (chunk.Stage == "Advisor"
-                    && chunk.Phase == DiagnosticChunkPhase.Completed
-                    && !string.IsNullOrWhiteSpace(chunk.Content))
+                await foreach (var chunk in _orchestrator.RunStreamingAsync(taskPrompt, cancellationToken))
                 {
-                    advisorReport = chunk.Content.Trim();
+                    ApplyChunk(chunk);
                 }
             }
+            finally
+            {
+                DiagnosticStreamContext.SetNotifier(null);
+            }
+
+            _messages[assistantIndex] = ChatMessage.Assistant(streamBuilder.BuildMarkdown(streaming: false));
+            Notify(onUpdated);
 
             var finalContent = _messages[assistantIndex].Content;
             _chatHistory.AddAssistantMessage(finalContent);
@@ -110,6 +141,8 @@ public sealed class DiagnosticSessionService
         finally
         {
             IsRunning = false;
+            DiagnosticStreamContext.SetNotifier(null);
+            DiagnosticStreamContext.SetCurrentStage(null);
             Notify(onUpdated);
         }
     }

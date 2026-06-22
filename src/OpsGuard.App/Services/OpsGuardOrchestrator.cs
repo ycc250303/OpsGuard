@@ -7,6 +7,8 @@ using Microsoft.SemanticKernel.Agents;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
 using OpsGuard.Core.Agents;
 using OpsGuard.Core.Configuration;
+using OpsGuard.Core.Streaming;
+using OpsGuard.Infrastructure.Streaming;
 using OpsGuard.Core.Memory;
 using OpsGuard.Infrastructure.Llm;
 using OpsGuard.Plugins.DependencyInjection;
@@ -84,11 +86,19 @@ public sealed class OpsGuardOrchestrator
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromMinutes(_agentOptions.OrchestrationTimeoutMinutes));
 
-        _logger.LogInformation("Starting multi-agent pipeline (streaming)");
+        _logger.LogInformation("Starting multi-agent pipeline (token streaming)");
 
-        yield return new DiagnosticChunk("Collector", DiagnosticChunkPhase.Started, null);
-        var collectorFacts = await InvokeAgentStageAsync(_collector, taskPrompt, timeoutCts.Token);
-        yield return new DiagnosticChunk("Collector", DiagnosticChunkPhase.Completed, collectorFacts);
+        var collectorFacts = string.Empty;
+        await foreach (var chunk in InvokeAgentStageStreamingAsync(
+            _collector, "Collector", taskPrompt, timeoutCts.Token))
+        {
+            if (chunk.Phase == DiagnosticChunkPhase.Completed)
+            {
+                collectorFacts = chunk.Content ?? string.Empty;
+            }
+
+            yield return chunk;
+        }
 
         var analyzerInput = $"""
             {taskPrompt}
@@ -97,9 +107,17 @@ public sealed class OpsGuardOrchestrator
             {collectorFacts}
             """;
 
-        yield return new DiagnosticChunk("Analyzer", DiagnosticChunkPhase.Started, null);
-        var analysis = await InvokeAgentStageAsync(_analyzer, analyzerInput, timeoutCts.Token);
-        yield return new DiagnosticChunk("Analyzer", DiagnosticChunkPhase.Completed, analysis);
+        var analysis = string.Empty;
+        await foreach (var chunk in InvokeAgentStageStreamingAsync(
+            _analyzer, "Analyzer", analyzerInput, timeoutCts.Token))
+        {
+            if (chunk.Phase == DiagnosticChunkPhase.Completed)
+            {
+                analysis = chunk.Content ?? string.Empty;
+            }
+
+            yield return chunk;
+        }
 
         var advisorInput = $"""
             {taskPrompt}
@@ -108,30 +126,52 @@ public sealed class OpsGuardOrchestrator
             {analysis}
             """;
 
-        yield return new DiagnosticChunk("Advisor", DiagnosticChunkPhase.Started, null);
-        var report = await InvokeAgentStageAsync(_advisor, advisorInput, timeoutCts.Token);
-        yield return new DiagnosticChunk("Advisor", DiagnosticChunkPhase.Completed, report);
+        await foreach (var chunk in InvokeAgentStageStreamingAsync(
+            _advisor, "Advisor", advisorInput, timeoutCts.Token))
+        {
+            yield return chunk;
+        }
     }
 
-    private async Task<string> InvokeAgentStageAsync(
+    private static async IAsyncEnumerable<DiagnosticChunk> InvokeAgentStageStreamingAsync(
         ChatCompletionAgent agent,
+        string stage,
         string input,
-        CancellationToken cancellationToken)
+        [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         Console.WriteLine();
         Console.WriteLine($"=== {agent.Name} ===");
 
-        var thread = new ChatHistoryAgentThread();
-        var response = await agent.InvokeAsync(input, thread, cancellationToken: cancellationToken)
-            .FirstAsync(cancellationToken);
+        yield return new DiagnosticChunk(stage, DiagnosticChunkPhase.Started, null);
 
-        var content = response.Message.Content ?? string.Empty;
-        if (!string.IsNullOrWhiteSpace(content))
+        DiagnosticStreamContext.SetCurrentStage(stage);
+
+        var thread = new ChatHistoryAgentThread();
+        var fullContent = new StringBuilder();
+
+        try
         {
-            Console.WriteLine(content);
+            await foreach (var update in agent.InvokeStreamingAsync(input, thread, cancellationToken: cancellationToken))
+            {
+                var delta = update.Message?.Content;
+                if (string.IsNullOrEmpty(delta))
+                {
+                    continue;
+                }
+
+                fullContent.Append(delta);
+                Console.Write(delta);
+
+                yield return new DiagnosticChunk(stage, DiagnosticChunkPhase.Delta, delta);
+            }
+        }
+        finally
+        {
+            DiagnosticStreamContext.SetCurrentStage(null);
         }
 
-        return content;
+        Console.WriteLine();
+        yield return new DiagnosticChunk(stage, DiagnosticChunkPhase.Completed, fullContent.ToString());
     }
 
     private static ChatCompletionAgent CreateAgent(
@@ -148,50 +188,5 @@ public sealed class OpsGuardOrchestrator
             Kernel = kernel,
             Arguments = new KernelArguments(settings)
         };
-    }
-
-    internal static string BuildStreamingMarkdown(IReadOnlyList<DiagnosticChunk> chunks)
-    {
-        var sb = new StringBuilder();
-        var byStage = chunks
-            .GroupBy(c => c.Stage)
-            .ToDictionary(g => g.Key, g => g.ToList());
-
-        foreach (var stage in new[] { "Collector", "Analyzer", "Advisor" })
-        {
-            if (!byStage.TryGetValue(stage, out var stageChunks))
-            {
-                continue;
-            }
-
-            var started = stageChunks.Any(c => c.Phase == DiagnosticChunkPhase.Started);
-            if (!started)
-            {
-                continue;
-            }
-
-            var completed = stageChunks.LastOrDefault(c => c.Phase == DiagnosticChunkPhase.Completed);
-
-            if (sb.Length > 0)
-            {
-                sb.AppendLine();
-            }
-
-            sb.AppendLine($"## {stage}");
-            sb.AppendLine();
-
-            if (completed is not null)
-            {
-                sb.AppendLine(string.IsNullOrWhiteSpace(completed.Content)
-                    ? "_（无输出）_"
-                    : completed.Content.Trim());
-            }
-            else
-            {
-                sb.AppendLine("*运行中…*");
-            }
-        }
-
-        return sb.ToString().Trim();
     }
 }

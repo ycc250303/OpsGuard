@@ -15,7 +15,7 @@
         </div>
         <div class="ops-meta">
             <span class="ops-badge">Collector → Analyzer → Advisor</span>
-            <span class="ops-topology" title="@AppInfo.TopologyPath">拓扑: @Path.GetFileName(AppInfo.TopologyPath)</span>
+            
             <span class="ops-topology">本机: @_machineName (@_osPlatform)</span>
         </div>
     </header>
@@ -46,16 +46,13 @@
                     {
                         <div class="ops-message-body">@message.Content</div>
                     }
+                    else if (_isRunning && message == Session.Messages.Last())
+                    {
+                        <div class="ops-message-body streaming">@message.Content<span class="ops-cursor">▍</span></div>
+                    }
                     else
                     {
                         <div class="ops-message-body markdown">@((MarkupString)MarkdownRenderer.ToHtml(message.Content))</div>
-                        @if (_isRunning && !message.IsUser && message == Session.Messages.Last())
-                        {
-                            <div class="ops-stage-running">
-                                <span class="ops-spinner ops-spinner-sm"></span>
-                                下一阶段进行中…
-                            </div>
-                        }
                     }
                     <time class="ops-message-time">@message.At.ToLocalTime().ToString("HH:mm:ss")</time>
                 </article>

@@ -1,26 +1,31 @@
 using FluentAssertions;
 using OpsGuard.App.Services;
+using OpsGuard.Core.Streaming;
 
 namespace OpsGuard.Tests;
 
 public class StreamingMarkdownTests
 {
     [Fact]
-    public void BuildStreamingMarkdown_ShowsRunningThenCompletedStages()
+    public void BuildMarkdown_StreamsDeltasAndTools()
     {
-        var chunks = new List<DiagnosticChunk>
-        {
-            new("Collector", DiagnosticChunkPhase.Started, null),
-            new("Collector", DiagnosticChunkPhase.Completed, "CPU 12%"),
-            new("Analyzer", DiagnosticChunkPhase.Started, null)
-        };
+        var builder = new DiagnosticStreamBuilder();
 
-        var markdown = OpsGuardOrchestrator.BuildStreamingMarkdown(chunks);
+        builder.Apply(new DiagnosticChunk("Collector", DiagnosticChunkPhase.Started, null));
+        builder.Apply(new DiagnosticChunk("Collector", DiagnosticChunkPhase.ToolInvoking, null, "Host.GetHostMetrics"));
+        builder.Apply(new DiagnosticChunk("Collector", DiagnosticChunkPhase.ToolCompleted, null, "Host.GetHostMetrics"));
+        builder.Apply(new DiagnosticChunk("Collector", DiagnosticChunkPhase.Delta, "CPU "));
+        builder.Apply(new DiagnosticChunk("Collector", DiagnosticChunkPhase.Delta, "12%"));
+        builder.Apply(new DiagnosticChunk("Collector", DiagnosticChunkPhase.Completed, "CPU 12%"));
+        builder.Apply(new DiagnosticChunk("Analyzer", DiagnosticChunkPhase.Started, null));
+        builder.Apply(new DiagnosticChunk("Analyzer", DiagnosticChunkPhase.Delta, "初步"));
+
+        var markdown = builder.BuildMarkdown(streaming: true);
 
         markdown.Should().Contain("## Collector");
         markdown.Should().Contain("CPU 12%");
+        markdown.Should().Contain("Host.GetHostMetrics");
         markdown.Should().Contain("## Analyzer");
-        markdown.Should().Contain("*运行中…*");
-        markdown.Should().NotContain("CPU 12%*运行中");
+        markdown.Should().Contain("初步");
     }
 }
