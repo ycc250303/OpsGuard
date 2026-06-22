@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using OpsGuard.App.Services;
 using OpsGuard.App.Services.Conversations;
 using OpsGuard.Core.Configuration;
@@ -12,7 +13,7 @@ public sealed class JsonConversationStoreTests : IDisposable
     public JsonConversationStoreTests()
     {
         _directory = Path.Combine(Path.GetTempPath(), "opsguard-tests", Guid.NewGuid().ToString("N"));
-        _store = new JsonConversationStore(new ConversationStoreOptions { Directory = _directory });
+        _store = new JsonConversationStore(Options.Create(new ConversationStoreOptions { Directory = _directory }));
     }
 
     [Fact]
@@ -50,7 +51,7 @@ public sealed class JsonConversationStoreTests : IDisposable
 
         await _store.SaveSessionAsync(session);
 
-        var reloaded = new JsonConversationStore(new ConversationStoreOptions { Directory = _directory });
+        var reloaded = new JsonConversationStore(Options.Create(new ConversationStoreOptions { Directory = _directory }));
         await reloaded.InitializeAsync();
         var loaded = await reloaded.LoadSessionAsync(session.Id);
 

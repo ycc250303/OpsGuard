@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.Options;
 using OpsGuard.Core.Configuration;
 
 namespace OpsGuard.App.Services.Conversations;
@@ -18,14 +19,15 @@ public sealed class JsonConversationStore : IConversationStore
     private ConversationIndex _index = new();
     private bool _initialized;
 
-    public JsonConversationStore(ConversationStoreOptions options)
+    public JsonConversationStore(IOptions<ConversationStoreOptions> options)
     {
-        if (string.IsNullOrWhiteSpace(options.Directory))
+        var directory = options.Value.Directory;
+        if (string.IsNullOrWhiteSpace(directory))
         {
             throw new InvalidOperationException("ConversationStore.Directory 未配置。");
         }
 
-        _directory = Path.GetFullPath(options.Directory);
+        _directory = Path.GetFullPath(directory);
     }
 
     public bool IsEnabled => true;
