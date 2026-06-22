@@ -46,17 +46,24 @@
                     else
                     {
                         <div class="ops-message-body markdown">@((MarkupString)MarkdownRenderer.ToHtml(message.Content))</div>
+                        @if (_isRunning && !message.IsUser && message == Session.Messages.Last())
+                        {
+                            <div class="ops-stage-running">
+                                <span class="ops-spinner ops-spinner-sm"></span>
+                                下一阶段进行中…
+                            </div>
+                        }
                     }
                     <time class="ops-message-time">@message.At.ToLocalTime().ToString("HH:mm:ss")</time>
                 </article>
             }
         }
 
-        @if (_isRunning)
+        @if (_isRunning && !HasStreamingAssistantMessage())
         {
             <div class="ops-loading">
                 <span class="ops-spinner"></span>
-                正在诊断（Collector 采集 → Analyzer 分析 → Advisor 报告）…
+                正在启动诊断…
             </div>
         }
     </section>
@@ -105,7 +112,10 @@
 
         try
         {
-            await Session.AskAsync(question, _cts.Token);
+            await Session.AskStreamingAsync(
+                question,
+                () => _ = InvokeAsync(StateHasChanged),
+                _cts.Token);
         }
         catch (Exception ex)
         {
@@ -145,5 +155,11 @@
     {
         _cts?.Cancel();
         _cts?.Dispose();
+    }
+
+    private bool HasStreamingAssistantMessage()
+    {
+        var last = Session.Messages.LastOrDefault();
+        return last is { IsUser: false } && !string.IsNullOrWhiteSpace(last.Content);
     }
 }

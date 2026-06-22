@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\OpsGuard.App\OpsGuard.App.csproj" />
     <ProjectReference Include="..\..\src\OpsGuard.Core\OpsGuard.Core.csproj" />
     <ProjectReference Include="..\..\src\OpsGuard.Plugins\OpsGuard.Plugins.csproj" />
     <ProjectReference Include="..\..\src\OpsGuard.Infrastructure\OpsGuard.Infrastructure.csproj" />

@@ -28,7 +28,13 @@ public sealed class DiagnosticSessionService
 
     public bool IsRunning { get; private set; }
 
-    public async Task<string> AskAsync(string userInput, CancellationToken cancellationToken = default)
+    public Task<string> AskAsync(string userInput, CancellationToken cancellationToken = default) =>
+        AskStreamingAsync(userInput, onUpdated: null, cancellationToken);
+
+    public async Task<string> AskStreamingAsync(
+        string userInput,
+        Action? onUpdated = null,
+        CancellationToken cancellationToken = default)
     {
         if (IsRunning)
         {
@@ -43,6 +49,9 @@ public sealed class DiagnosticSessionService
 
         IsRunning = true;
         _messages.Add(ChatMessage.User(userInput));
+        var assistantIndex = _messages.Count;
+        _messages.Add(ChatMessage.Assistant(string.Empty));
+        Notify(onUpdated);
 
         try
         {
@@ -57,21 +66,51 @@ public sealed class DiagnosticSessionService
                 ? $"## 用户问题\n{userInput}"
                 : $"{historySummary}\n\n## 用户问题\n{userInput}";
 
-            var report = await _orchestrator.RunAsync(taskPrompt, cancellationToken);
-            _chatHistory.AddAssistantMessage(report);
-            _messages.Add(ChatMessage.Assistant(report));
-            return report;
+            var chunks = new List<DiagnosticChunk>();
+            var advisorReport = string.Empty;
+
+            await foreach (var chunk in _orchestrator.RunStreamingAsync(taskPrompt, cancellationToken))
+            {
+                chunks.Add(chunk);
+                _messages[assistantIndex] = ChatMessage.Assistant(
+                    OpsGuardOrchestrator.BuildStreamingMarkdown(chunks));
+                Notify(onUpdated);
+
+                if (chunk.Stage == "Advisor"
+                    && chunk.Phase == DiagnosticChunkPhase.Completed
+                    && !string.IsNullOrWhiteSpace(chunk.Content))
+                {
+                    advisorReport = chunk.Content.Trim();
+                }
+            }
+
+            var finalContent = _messages[assistantIndex].Content;
+            _chatHistory.AddAssistantMessage(finalContent);
+
+            return string.IsNullOrWhiteSpace(advisorReport)
+                ? "未能生成诊断报告，请重试或缩小问题范围。"
+                : advisorReport;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            var error = $"诊断超时（{_agentOptions.OrchestrationTimeoutMinutes} 分钟），请缩小问题范围后重试。";
+            _messages[assistantIndex] = ChatMessage.Assistant(error);
+            _chatHistory.AddAssistantMessage(error);
+            Notify(onUpdated);
+            return error;
         }
         catch (Exception ex)
         {
             var error = $"诊断失败: {ex.Message}";
+            _messages[assistantIndex] = ChatMessage.Assistant(error);
             _chatHistory.AddAssistantMessage(error);
-            _messages.Add(ChatMessage.Assistant(error));
+            Notify(onUpdated);
             return error;
         }
         finally
         {
             IsRunning = false;
+            Notify(onUpdated);
         }
     }
 
@@ -85,6 +124,8 @@ public sealed class DiagnosticSessionService
         _messages.Clear();
         _chatHistory.Clear();
     }
+
+    private static void Notify(Action? onUpdated) => onUpdated?.Invoke();
 }
 
 public sealed record ChatMessage(string Role, string Content, DateTimeOffset At)

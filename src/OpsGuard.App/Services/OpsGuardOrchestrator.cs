@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
@@ -59,51 +61,56 @@ public sealed class OpsGuardOrchestrator
 
     public async Task<string> RunAsync(string taskPrompt, CancellationToken cancellationToken = default)
     {
+        var report = string.Empty;
+        await foreach (var chunk in RunStreamingAsync(taskPrompt, cancellationToken))
+        {
+            if (chunk.Stage == "Advisor"
+                && chunk.Phase == DiagnosticChunkPhase.Completed
+                && !string.IsNullOrWhiteSpace(chunk.Content))
+            {
+                report = chunk.Content;
+            }
+        }
+
+        return string.IsNullOrWhiteSpace(report)
+            ? "未能生成诊断报告，请重试或缩小问题范围。"
+            : report.Trim();
+    }
+
+    public async IAsyncEnumerable<DiagnosticChunk> RunStreamingAsync(
+        string taskPrompt,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromMinutes(_agentOptions.OrchestrationTimeoutMinutes));
 
-        try
-        {
-            _logger.LogInformation("Starting multi-agent pipeline");
+        _logger.LogInformation("Starting multi-agent pipeline (streaming)");
 
-            var collectorFacts = await InvokeAgentStageAsync(
-                _collector,
-                taskPrompt,
-                timeoutCts.Token);
+        yield return new DiagnosticChunk("Collector", DiagnosticChunkPhase.Started, null);
+        var collectorFacts = await InvokeAgentStageAsync(_collector, taskPrompt, timeoutCts.Token);
+        yield return new DiagnosticChunk("Collector", DiagnosticChunkPhase.Completed, collectorFacts);
 
-            var analyzerInput = $"""
-                {taskPrompt}
+        var analyzerInput = $"""
+            {taskPrompt}
 
-                ## Collector 采集结果
-                {collectorFacts}
-                """;
+            ## Collector 采集结果
+            {collectorFacts}
+            """;
 
-            var analysis = await InvokeAgentStageAsync(
-                _analyzer,
-                analyzerInput,
-                timeoutCts.Token);
+        yield return new DiagnosticChunk("Analyzer", DiagnosticChunkPhase.Started, null);
+        var analysis = await InvokeAgentStageAsync(_analyzer, analyzerInput, timeoutCts.Token);
+        yield return new DiagnosticChunk("Analyzer", DiagnosticChunkPhase.Completed, analysis);
 
-            var advisorInput = $"""
-                {taskPrompt}
+        var advisorInput = $"""
+            {taskPrompt}
 
-                ## Analyzer 分析结果
-                {analysis}
-                """;
+            ## Analyzer 分析结果
+            {analysis}
+            """;
 
-            var report = await InvokeAgentStageAsync(
-                _advisor,
-                advisorInput,
-                timeoutCts.Token);
-
-            return string.IsNullOrWhiteSpace(report)
-                ? "未能生成诊断报告，请重试或缩小问题范围。"
-                : report.Trim();
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            throw new TimeoutException(
-                $"诊断超时（{_agentOptions.OrchestrationTimeoutMinutes} 分钟），请缩小问题范围后重试。");
-        }
+        yield return new DiagnosticChunk("Advisor", DiagnosticChunkPhase.Started, null);
+        var report = await InvokeAgentStageAsync(_advisor, advisorInput, timeoutCts.Token);
+        yield return new DiagnosticChunk("Advisor", DiagnosticChunkPhase.Completed, report);
     }
 
     private async Task<string> InvokeAgentStageAsync(
@@ -141,5 +148,50 @@ public sealed class OpsGuardOrchestrator
             Kernel = kernel,
             Arguments = new KernelArguments(settings)
         };
+    }
+
+    internal static string BuildStreamingMarkdown(IReadOnlyList<DiagnosticChunk> chunks)
+    {
+        var sb = new StringBuilder();
+        var byStage = chunks
+            .GroupBy(c => c.Stage)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        foreach (var stage in new[] { "Collector", "Analyzer", "Advisor" })
+        {
+            if (!byStage.TryGetValue(stage, out var stageChunks))
+            {
+                continue;
+            }
+
+            var started = stageChunks.Any(c => c.Phase == DiagnosticChunkPhase.Started);
+            if (!started)
+            {
+                continue;
+            }
+
+            var completed = stageChunks.LastOrDefault(c => c.Phase == DiagnosticChunkPhase.Completed);
+
+            if (sb.Length > 0)
+            {
+                sb.AppendLine();
+            }
+
+            sb.AppendLine($"## {stage}");
+            sb.AppendLine();
+
+            if (completed is not null)
+            {
+                sb.AppendLine(string.IsNullOrWhiteSpace(completed.Content)
+                    ? "_（无输出）_"
+                    : completed.Content.Trim());
+            }
+            else
+            {
+                sb.AppendLine("*运行中…*");
+            }
+        }
+
+        return sb.ToString().Trim();
     }
 }
