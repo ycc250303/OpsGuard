@@ -29,7 +29,7 @@ public class ComposeLogsPluginTests
     {
         var docker = new Mock<IComposeDockerClient>();
         docker
-            .Setup(d => d.GetLogsAsync(It.IsAny<ValidatedContainerName>(), "backend", 200, It.IsAny<CancellationToken>()))
+            .Setup(d => d.GetLogsAsync(It.IsAny<ValidatedContainerName>(), "backend", 200, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(DiagnosticResult<string>.Ok("logs"));
 
         var plugin = new ComposeLogsPlugin(
@@ -39,7 +39,26 @@ public class ComposeLogsPluginTests
 
         await plugin.QueryComposeServiceLogsAsync("backend", 500);
 
-        docker.Verify(d => d.GetLogsAsync(It.IsAny<ValidatedContainerName>(), "backend", 200, It.IsAny<CancellationToken>()), Times.Once);
+        docker.Verify(d => d.GetLogsAsync(It.IsAny<ValidatedContainerName>(), "backend", 200, null, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task QueryComposeServiceLogs_PassesSinceToDockerClient()
+    {
+        var docker = new Mock<IComposeDockerClient>();
+        docker
+            .Setup(d => d.GetLogsAsync(It.IsAny<ValidatedContainerName>(), "backend", 200, "72h", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(DiagnosticResult<string>.Ok("2024-01-01 error"));
+
+        var plugin = new ComposeLogsPlugin(
+            CreateCatalog(),
+            docker.Object,
+            Options.Create(new AgentOptions { MaxLogTailLines = 200, MaxLogSinceHours = 168 }));
+
+        var json = await plugin.QueryComposeServiceLogsAsync("backend", 200, "72h");
+
+        json.Should().Contain("72h");
+        docker.Verify(d => d.GetLogsAsync(It.IsAny<ValidatedContainerName>(), "backend", 200, "72h", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     private static IServiceCatalog CreateCatalog()

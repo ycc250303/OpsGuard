@@ -48,7 +48,10 @@
                     }
                     else if (_isRunning && message == Session.Messages.Last())
                     {
-                        <div class="ops-message-body streaming">@message.Content<span class="ops-cursor">▍</span></div>
+                        <div class="ops-message-body markdown streaming">
+                            @((MarkupString)MarkdownRenderer.ToHtml(message.Content))
+                            <span class="ops-cursor">▍</span>
+                        </div>
                     }
                     else
                     {

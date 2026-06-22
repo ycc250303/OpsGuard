@@ -13,5 +13,6 @@ public interface IComposeDockerClient
         ValidatedContainerName containerName,
         string serviceId,
         int tailLines,
+        string? since = null,
         CancellationToken cancellationToken = default);
 }

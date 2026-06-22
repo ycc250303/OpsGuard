@@ -25,10 +25,11 @@ public sealed class ComposeLogsPlugin
     }
 
     [KernelFunction("QueryComposeServiceLogs")]
-    [Description("获取 JSON 拓扑中指定 serviceId 对应容器的 docker logs 尾部日志。")]
+    [Description("获取拓扑中 serviceId 对应容器的 docker logs。支持按时间起点过滤（--since）并带时间戳；仍受 tailLines 上限约束。")]
     public async Task<string> QueryComposeServiceLogsAsync(
         [Description("拓扑 JSON 中的服务 Id，例如 backend")] string serviceId,
-        [Description("日志行数，最大 200")] int tailLines = 100,
+        [Description("日志行数上限，最大 200")] int tailLines = 100,
+        [Description("仅返回该时间点之后的日志。相对时间：72h（三天）、24h、30m；或 ISO 时间如 2024-01-01T00:00:00Z。留空则只取尾部 tailLines 行")] string? since = null,
         CancellationToken cancellationToken = default)
     {
         if (!_serviceCatalog.TryGetValidatedContainerName(serviceId, out var containerName) || containerName is null)
@@ -40,13 +41,31 @@ public sealed class ComposeLogsPlugin
             });
         }
 
+        if (!DockerLogSinceValidator.TryNormalize(since, _options.MaxLogSinceHours, out var normalizedSince, out var sinceError))
+        {
+            return DiagnosticJson.Serialize(new
+            {
+                success = false,
+                serviceId,
+                error = sinceError
+            });
+        }
+
         var clampedTail = Math.Clamp(tailLines, 1, _options.MaxLogTailLines);
-        var result = await _dockerClient.GetLogsAsync(containerName, serviceId, clampedTail, cancellationToken);
+        var result = await _dockerClient.GetLogsAsync(
+            containerName,
+            serviceId,
+            clampedTail,
+            normalizedSince,
+            cancellationToken);
+
         return DiagnosticJson.Serialize(new
         {
             result.Success,
             serviceId,
             tailLines = clampedTail,
+            since = normalizedSince,
+            timestamps = true,
             logs = result.Data,
             error = result.Error
         });

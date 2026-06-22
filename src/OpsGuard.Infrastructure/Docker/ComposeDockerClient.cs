@@ -83,18 +83,32 @@ public sealed class ComposeDockerClient : IComposeDockerClient
         ValidatedContainerName containerName,
         string serviceId,
         int tailLines,
+        string? since = null,
         CancellationToken cancellationToken = default)
     {
-        var clampedTail = Math.Clamp(tailLines, 1, _options.MaxLogTailLines);
-        var args = new[]
+        if (!DockerLogSinceValidator.TryNormalize(since, _options.MaxLogSinceHours, out var normalizedSince, out var sinceError))
         {
-            "logs",
-            "--tail",
-            clampedTail.ToString(),
-            containerName.Value
-        };
+            return DiagnosticResult<string>.Fail(sinceError!);
+        }
 
-        var result = await _processRunner.RunAsync("docker", args, TimeSpan.FromSeconds(30), cancellationToken);
+        var clampedTail = Math.Clamp(tailLines, 1, _options.MaxLogTailLines);
+        var args = new List<string> { "logs", "--timestamps" };
+
+        if (!string.IsNullOrWhiteSpace(normalizedSince))
+        {
+            args.Add("--since");
+            args.Add(normalizedSince);
+        }
+
+        args.Add("--tail");
+        args.Add(clampedTail.ToString());
+        args.Add(containerName.Value);
+
+        var timeout = string.IsNullOrWhiteSpace(normalizedSince)
+            ? TimeSpan.FromSeconds(30)
+            : TimeSpan.FromSeconds(60);
+
+        var result = await _processRunner.RunAsync("docker", args, timeout, cancellationToken);
         if (result.ExitCode != 0)
         {
             _logger.LogWarning("docker logs failed for {Container}: {Error}", containerName.Value, result.StandardError);

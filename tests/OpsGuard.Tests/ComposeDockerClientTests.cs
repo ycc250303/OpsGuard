@@ -57,7 +57,30 @@ public class ComposeDockerClientTests
 
         capturedArgs.Should().NotBeNull();
         capturedArgs![0].Should().Be("logs");
-        capturedArgs[1].Should().Be("--tail");
-        capturedArgs[2].Should().Be("200");
+        capturedArgs[1].Should().Be("--timestamps");
+        capturedArgs[2].Should().Be("--tail");
+        capturedArgs[3].Should().Be("200");
+        capturedArgs[4].Should().Be("demo-backend-1");
+    }
+
+    [Fact]
+    public async Task GetLogsAsync_UsesSinceWhenProvided()
+    {
+        IReadOnlyList<string>? capturedArgs = null;
+        var runner = new Mock<IProcessRunner>();
+        runner
+            .Setup(r => r.RunAsync("docker", It.IsAny<IReadOnlyList<string>>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .Callback<string, IReadOnlyList<string>, TimeSpan, CancellationToken>((_, args, _, _) => capturedArgs = args)
+            .ReturnsAsync(new ProcessRunResult(0, "log line", string.Empty));
+
+        var client = new ComposeDockerClient(
+            runner.Object,
+            Options.Create(new AgentOptions { MaxLogTailLines = 200, MaxLogSinceHours = 168 }),
+            NullLogger<ComposeDockerClient>.Instance);
+
+        var container = new ValidatedContainerName("demo-backend-1");
+        await client.GetLogsAsync(container, "backend", 100, "72h");
+
+        capturedArgs.Should().ContainInOrder("logs", "--timestamps", "--since", "72h", "--tail", "100", "demo-backend-1");
     }
 }
