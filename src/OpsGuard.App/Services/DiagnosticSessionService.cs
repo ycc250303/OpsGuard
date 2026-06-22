@@ -4,6 +4,7 @@ using Microsoft.SemanticKernel.ChatCompletion;
 using OpsGuard.Core.Agents;
 using OpsGuard.Core.Configuration;
 using OpsGuard.Core.Streaming;
+using OpsGuard.App.Services.Conversations;
 using OpsGuard.Infrastructure.Streaming;
 
 namespace OpsGuard.App.Services;
@@ -14,19 +15,24 @@ public sealed class DiagnosticSessionService
 
     private readonly OpsGuardOrchestratorFactory _orchestratorFactory;
     private readonly IUserModelSelection _modelSelection;
+    private readonly IConversationStore _conversationStore;
     private readonly AgentOptions _agentOptions;
     private readonly ChatHistory _chatHistory = new();
     private readonly ChatHistoryAgentThread _agentThread;
     private OpsGuardOrchestrator? _orchestrator;
     private string? _orchestratorModelId;
+    private StoredConversation? _activeConversation;
+    private bool _initialized;
 
     public DiagnosticSessionService(
         OpsGuardOrchestratorFactory orchestratorFactory,
         IUserModelSelection modelSelection,
+        IConversationStore conversationStore,
         IOptions<AgentOptions> agentOptions)
     {
         _orchestratorFactory = orchestratorFactory;
         _modelSelection = modelSelection;
+        _conversationStore = conversationStore;
         _agentOptions = agentOptions.Value;
         _agentThread = new ChatHistoryAgentThread(_chatHistory);
     }
@@ -37,6 +43,91 @@ public sealed class DiagnosticSessionService
 
     public bool IsRunning { get; private set; }
 
+    public bool PersistenceEnabled => _conversationStore.IsEnabled;
+
+    public string? ActiveSessionId => _activeConversation?.Id;
+
+    public IReadOnlyList<ConversationSummary> SessionSummaries => _conversationStore.Sessions;
+
+    public async Task InitializeAsync(CancellationToken cancellationToken = default)
+    {
+        if (_initialized)
+        {
+            return;
+        }
+
+        if (!_conversationStore.IsEnabled)
+        {
+            _initialized = true;
+            return;
+        }
+
+        await _conversationStore.InitializeAsync(cancellationToken);
+        var activeSessionId = _conversationStore.ActiveSessionId
+            ?? throw new InvalidOperationException("未找到活动会话。");
+
+        await LoadSessionAsync(activeSessionId, cancellationToken);
+        _initialized = true;
+    }
+
+    public async Task CreateSessionAsync(CancellationToken cancellationToken = default)
+    {
+        EnsureNotRunning();
+        await EnsureInitializedAsync(cancellationToken);
+
+        if (!_conversationStore.IsEnabled)
+        {
+            ClearInMemory();
+            return;
+        }
+
+        var session = await _conversationStore.CreateSessionAsync(_modelSelection.ModelId, cancellationToken);
+        ApplySession(session);
+    }
+
+    public async Task SwitchSessionAsync(string sessionId, CancellationToken cancellationToken = default)
+    {
+        EnsureNotRunning();
+        await EnsureInitializedAsync(cancellationToken);
+
+        if (!_conversationStore.IsEnabled)
+        {
+            return;
+        }
+
+        if (string.Equals(_activeConversation?.Id, sessionId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        await _conversationStore.SetActiveSessionAsync(sessionId, cancellationToken);
+        await LoadSessionAsync(sessionId, cancellationToken);
+    }
+
+    public async Task DeleteSessionAsync(string sessionId, CancellationToken cancellationToken = default)
+    {
+        EnsureNotRunning();
+        await EnsureInitializedAsync(cancellationToken);
+
+        if (!_conversationStore.IsEnabled)
+        {
+            ClearInMemory();
+            return;
+        }
+
+        await _conversationStore.DeleteSessionAsync(sessionId, cancellationToken);
+
+        var nextSessionId = _conversationStore.ActiveSessionId;
+        if (string.IsNullOrWhiteSpace(nextSessionId))
+        {
+            ClearInMemory();
+            _activeConversation = null;
+            return;
+        }
+
+        await LoadSessionAsync(nextSessionId, cancellationToken);
+    }
+
     public Task<string> AskAsync(string userInput, CancellationToken cancellationToken = default) =>
         AskStreamingAsync(userInput, onUpdated: null, cancellationToken);
 
@@ -45,6 +136,8 @@ public sealed class DiagnosticSessionService
         Action? onUpdated = null,
         CancellationToken cancellationToken = default)
     {
+        await EnsureInitializedAsync(cancellationToken);
+
         if (IsRunning)
         {
             throw new InvalidOperationException("上一条诊断尚未完成，请稍候。");
@@ -123,6 +216,8 @@ public sealed class DiagnosticSessionService
             var finalContent = _messages[assistantIndex].Content;
             _chatHistory.AddAssistantMessage(finalContent);
 
+            await PersistCurrentSessionAsync(userInput, cancellationToken);
+
             return string.IsNullOrWhiteSpace(advisorReport)
                 ? "未能生成诊断报告，请重试或缩小问题范围。"
                 : advisorReport;
@@ -133,6 +228,7 @@ public sealed class DiagnosticSessionService
             _messages[assistantIndex] = ChatMessage.Assistant(error);
             _chatHistory.AddAssistantMessage(error);
             Notify(onUpdated);
+            await PersistCurrentSessionAsync(userInput, cancellationToken);
             return error;
         }
         catch (Exception ex)
@@ -141,6 +237,7 @@ public sealed class DiagnosticSessionService
             _messages[assistantIndex] = ChatMessage.Assistant(error);
             _chatHistory.AddAssistantMessage(error);
             Notify(onUpdated);
+            await PersistCurrentSessionAsync(userInput, cancellationToken);
             return error;
         }
         finally
@@ -154,13 +251,99 @@ public sealed class DiagnosticSessionService
 
     public void Clear()
     {
-        if (IsRunning)
+        EnsureNotRunning();
+        ClearInMemory();
+    }
+
+    private async Task PersistCurrentSessionAsync(string latestUserMessage, CancellationToken cancellationToken)
+    {
+        if (!_conversationStore.IsEnabled || _activeConversation is null)
         {
-            throw new InvalidOperationException("诊断进行中，无法清空。");
+            return;
         }
 
+        _activeConversation.ModelId = _modelSelection.ModelId;
+        if (_activeConversation.Title is "新会话")
+        {
+            _activeConversation.Title = ConversationTitleBuilder.FromUserMessage(latestUserMessage);
+        }
+
+        _activeConversation.Messages.Clear();
+        foreach (var message in _messages)
+        {
+            _activeConversation.Messages.Add(ConversationMessageMapper.ToStoredMessage(message));
+        }
+
+        await _conversationStore.SaveSessionAsync(_activeConversation, cancellationToken);
+    }
+
+    private async Task LoadSessionAsync(string sessionId, CancellationToken cancellationToken)
+    {
+        var session = await _conversationStore.LoadSessionAsync(sessionId, cancellationToken);
+        ApplySession(session);
+    }
+
+    private void ApplySession(StoredConversation session)
+    {
+        _activeConversation = session;
+        _modelSelection.SetModelId(session.ModelId);
+
+        _messages.Clear();
+        foreach (var message in session.Messages)
+        {
+            _messages.Add(ConversationMessageMapper.ToChatMessage(message));
+        }
+
+        RestoreChatHistory(_messages);
+        ResetOrchestratorCache();
+    }
+
+    private void RestoreChatHistory(IEnumerable<ChatMessage> messages)
+    {
+        _chatHistory.Clear();
+        foreach (var message in messages)
+        {
+            if (message.IsUser)
+            {
+                _chatHistory.AddUserMessage(message.Content);
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(message.Content))
+            {
+                _chatHistory.AddAssistantMessage(message.Content);
+            }
+        }
+    }
+
+    private void ClearInMemory()
+    {
         _messages.Clear();
         _chatHistory.Clear();
+        _activeConversation = null;
+        ResetOrchestratorCache();
+    }
+
+    private void ResetOrchestratorCache()
+    {
+        _orchestrator = null;
+        _orchestratorModelId = null;
+    }
+
+    private void EnsureNotRunning()
+    {
+        if (IsRunning)
+        {
+            throw new InvalidOperationException("诊断进行中，请稍候。");
+        }
+    }
+
+    private async Task EnsureInitializedAsync(CancellationToken cancellationToken)
+    {
+        if (!_initialized)
+        {
+            await InitializeAsync(cancellationToken);
+        }
     }
 
     private static void Notify(Action? onUpdated) => onUpdated?.Invoke();

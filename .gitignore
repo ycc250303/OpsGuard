@@ -12,6 +12,8 @@ docs/compose-topology.production.json
 appsettings.Development.json
 appsettings.Local.json
 
+data/
+
 ## IDE
 .idea/
 .cursor/

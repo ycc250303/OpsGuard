@@ -33,13 +33,144 @@ html, body {
     height: 100%;
 }
 
-.ops-page {
-    max-width: 960px;
-    margin: 0 auto;
+.ops-shell {
+    display: flex;
     min-height: 100vh;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.ops-sidebar {
+    width: 240px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--ops-border);
+    background: #fffaf5;
+    padding: 1rem 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.ops-sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 0.25rem;
+}
+
+.ops-sidebar-header h2 {
+    margin: 0;
+    font-size: 0.95rem;
+    color: var(--ops-header);
+}
+
+.btn-sidebar-new {
+    border: 1px solid var(--ops-border-strong);
+    background: var(--ops-accent);
+    color: white;
+    border-radius: 8px;
+    padding: 0.3rem 0.65rem;
+    font: inherit;
+    font-size: 0.78rem;
+    cursor: pointer;
+}
+
+.btn-sidebar-new:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.ops-session-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    overflow-y: auto;
+}
+
+.ops-session-item {
+    display: flex;
+    align-items: stretch;
+    gap: 0.25rem;
+}
+
+.ops-session-item.active .ops-session-button {
+    border-color: #f97316;
+    background: var(--ops-accent-soft);
+}
+
+.ops-session-button {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.15rem;
+    border: 1px solid var(--ops-border);
+    background: white;
+    border-radius: 10px;
+    padding: 0.55rem 0.65rem;
+    cursor: pointer;
+    text-align: left;
+    font: inherit;
+}
+
+.ops-session-button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.ops-session-title {
+    font-size: 0.82rem;
+    color: var(--ops-text);
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.ops-session-meta {
+    font-size: 0.7rem;
+    color: var(--ops-text-subtle);
+}
+
+.ops-session-delete {
+    width: 1.75rem;
+    border: 1px solid var(--ops-border);
+    background: white;
+    border-radius: 8px;
+    color: var(--ops-text-muted);
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.ops-session-delete:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.ops-page {
+    flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     padding: 1rem 1.25rem 1.25rem;
+}
+
+@media (max-width: 860px) {
+    .ops-shell {
+        flex-direction: column;
+    }
+
+    .ops-sidebar {
+        width: auto;
+        border-right: none;
+        border-bottom: 1px solid var(--ops-border);
+        max-height: 180px;
+    }
 }
 
 .ops-header {

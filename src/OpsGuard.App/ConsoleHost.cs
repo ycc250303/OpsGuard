@@ -5,6 +5,7 @@ using Microsoft.SemanticKernel.Agents;
 using Microsoft.SemanticKernel.ChatCompletion;
 using OpsGuard.App.DependencyInjection;
 using OpsGuard.App.Services;
+using OpsGuard.App.Services.Conversations;
 using OpsGuard.Core.Agents;
 using OpsGuard.Core.Configuration;
 
@@ -29,6 +30,7 @@ internal static class ConsoleHost
         var session = new DiagnosticSessionService(
             orchestratorFactory,
             modelSelection,
+            services.GetRequiredService<IConversationStore>(),
             services.GetRequiredService<IOptions<AgentOptions>>());
 
         PrintWelcome(topologyPath);

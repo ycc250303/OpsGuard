@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OpsGuard.App.Services;
+using OpsGuard.App.Services.Conversations;
 using OpsGuard.Core.Configuration;
 using OpsGuard.Core.Memory;
 using OpsGuard.Core.Topology;
@@ -22,6 +23,7 @@ public static class OpsGuardServiceCollectionExtensions
 
         services.Configure<LlmOptions>(configuration.GetSection(LlmOptions.SectionName));
         services.Configure<AgentOptions>(configuration.GetSection(AgentOptions.SectionName));
+        services.Configure<ConversationStoreOptions>(configuration.GetSection(ConversationStoreOptions.SectionName));
         services.Configure<ComposeTopologyOptions>(options => options.TopologyFile = topologyPath);
 
         var topologyProvider = new ComposeTopologyProvider(topologyPath);
@@ -46,6 +48,7 @@ public static class OpsGuardServiceCollectionExtensions
 
         services.AddSingleton<OpsGuardOrchestratorFactory>();
         services.AddSingleton<IUserModelSelection, ConfigUserModelSelection>();
+        services.AddSingleton<IConversationStore, NullConversationStore>();
 
         return services;
     }

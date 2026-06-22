@@ -1,5 +1,6 @@
 @page "/"
 @rendermode InteractiveServer
+@using OpsGuard.App.Services.Conversations
 @using OpsGuard.Core.Configuration
 @using OpsGuard.Core.Memory
 @using OpsGuard.App.Services
@@ -10,95 +11,128 @@
 
 <PageTitle>OpsGuard 运维诊断</PageTitle>
 
-<div class="ops-page">
-    <header class="ops-header">
-        <div>
-            <h1>OpsGuard</h1>
-            <p class="ops-subtitle">Linux 主机 + Docker Compose 运维诊断 Agent</p>
-        </div>
-        <div class="ops-meta">
-            <div class="ops-meta-row">
-                <span class="ops-badge">Collector → Analyzer → Advisor</span>
-                <button type="button" class="btn-settings" @onclick="OpenSettings" disabled="@_isRunning" title="设置">
-                    <span class="ops-settings-icon" aria-hidden="true">⚙</span>
-                    设置
-                </button>
-            </div>
-            <span class="ops-model-badge">模型: @ModelSelection.ModelId</span>
-            <span class="ops-topology">本机: @_machineName (@_osPlatform)</span>
-        </div>
-    </header>
-
-    <section class="ops-chat" @ref="_chatContainer">
-        @if (Session.Messages.Count == 0)
-        {
-            <div class="ops-empty">
-                <p>输入自然语言问题开始诊断，例如：</p>
-                <ul>
-                    <li>检查本机和所有配置的 compose 服务</li>
-                    <li>backend 容器运行正常吗？</li>
-                    <li>web-gateway 健康检查失败</li>
-                </ul>
-                <p class="ops-hint">检测对象为<strong>运行本程序的服务器</strong>（读本地 Docker / Host 指标）。</p>
-            </div>
-        }
-        else
-        {
-            @foreach (var message in Session.Messages)
-            {
-                <article class="ops-message @(message.IsUser ? "user" : "assistant")">
-                    @if (!message.IsUser)
-                    {
-                        <div class="ops-message-role">OpsGuard</div>
-                    }
-                    @if (message.IsUser)
-                    {
-                        <div class="ops-message-body">@message.Content</div>
-                    }
-                    else if (_isRunning && message == Session.Messages.Last())
-                    {
-                        <div class="ops-message-body markdown streaming">
-                            @((MarkupString)MarkdownRenderer.ToHtml(message.Content))
-                            <span class="ops-cursor">▍</span>
-                        </div>
-                    }
-                    else
-                    {
-                        <div class="ops-message-body markdown">@((MarkupString)MarkdownRenderer.ToHtml(message.Content))</div>
-                    }
-                    <time class="ops-message-time">@message.At.ToLocalTime().ToString("HH:mm:ss")</time>
-                </article>
-            }
-        }
-
-        @if (_isRunning && !HasStreamingAssistantMessage())
-        {
-            <div class="ops-loading">
-                <span class="ops-spinner"></span>
-                正在启动诊断…
-            </div>
-        }
-    </section>
-
-    @if (!string.IsNullOrEmpty(_error))
+<div class="ops-shell">
+    @if (Session.PersistenceEnabled)
     {
-        <div class="ops-error">@_error</div>
+        <aside class="ops-sidebar">
+            <div class="ops-sidebar-header">
+                <h2>会话</h2>
+                <button type="button" class="btn-sidebar-new" @onclick="CreateSessionAsync" disabled="@_isRunning">新建</button>
+            </div>
+            <ul class="ops-session-list">
+                @foreach (var summary in Session.SessionSummaries)
+                {
+                    <li class="ops-session-item @(summary.Id == Session.ActiveSessionId ? "active" : "")">
+                        <button type="button"
+                                class="ops-session-button"
+                                @onclick="() => SwitchSessionAsync(summary.Id)"
+                                disabled="@_isRunning">
+                            <span class="ops-session-title">@summary.Title</span>
+                            <span class="ops-session-meta">@summary.UpdatedAt.ToLocalTime().ToString("MM-dd HH:mm")</span>
+                        </button>
+                        @if (Session.SessionSummaries.Count > 1)
+                        {
+                            <button type="button"
+                                    class="ops-session-delete"
+                                    title="删除会话"
+                                    @onclick="() => DeleteSessionAsync(summary.Id)"
+                                    disabled="@_isRunning">×</button>
+                        }
+                    </li>
+                }
+            </ul>
+        </aside>
     }
 
-    <footer class="ops-input-bar">
-        <textarea @bind="_input"
-                  @bind:event="oninput"
-                  @onkeydown="HandleKeyDown"
-                  @oncompositionstart="HandleCompositionStart"
-                  @oncompositionend="HandleCompositionEnd"
-                  placeholder="描述你要排查的问题…"
-                  rows="2"
-                  disabled="@_isRunning"></textarea>
-        <div class="ops-actions">
-            <button type="button" class="btn-secondary" @onclick="ClearChatAsync" disabled="@(_isRunning || Session.Messages.Count == 0)">清空</button>
-            <button type="button" class="btn-primary" @onclick="SendAsync" disabled="@(_isRunning || string.IsNullOrWhiteSpace(_input))">发送</button>
-        </div>
-    </footer>
+    <div class="ops-page">
+        <header class="ops-header">
+            <div>
+                <h1>OpsGuard</h1>
+                <p class="ops-subtitle">Linux 主机 + Docker Compose 运维诊断 Agent</p>
+            </div>
+            <div class="ops-meta">
+                <div class="ops-meta-row">
+                    <span class="ops-badge">Collector → Analyzer → Advisor</span>
+                    <button type="button" class="btn-settings" @onclick="OpenSettings" disabled="@_isRunning" title="设置">
+                        <span class="ops-settings-icon" aria-hidden="true">⚙</span>
+                        设置
+                    </button>
+                </div>
+                <span class="ops-model-badge">模型: @ModelSelection.ModelId</span>
+                <span class="ops-topology">本机: @_machineName (@_osPlatform)</span>
+            </div>
+        </header>
+
+        <section class="ops-chat" @ref="_chatContainer">
+            @if (Session.Messages.Count == 0)
+            {
+                <div class="ops-empty">
+                    <p>输入自然语言问题开始诊断，例如：</p>
+                    <ul>
+                        <li>检查本机和所有配置的 compose 服务</li>
+                        <li>backend 容器运行正常吗？</li>
+                        <li>web-gateway 健康检查失败</li>
+                    </ul>
+                    <p class="ops-hint">检测对象为<strong>运行本程序的服务器</strong>（读本地 Docker / Host 指标）。</p>
+                </div>
+            }
+            else
+            {
+                @foreach (var message in Session.Messages)
+                {
+                    <article class="ops-message @(message.IsUser ? "user" : "assistant")">
+                        @if (!message.IsUser)
+                        {
+                            <div class="ops-message-role">OpsGuard</div>
+                        }
+                        @if (message.IsUser)
+                        {
+                            <div class="ops-message-body">@message.Content</div>
+                        }
+                        else if (_isRunning && message == Session.Messages.Last())
+                        {
+                            <div class="ops-message-body markdown streaming">
+                                @((MarkupString)MarkdownRenderer.ToHtml(message.Content))
+                                <span class="ops-cursor">▍</span>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="ops-message-body markdown">@((MarkupString)MarkdownRenderer.ToHtml(message.Content))</div>
+                        }
+                        <time class="ops-message-time">@message.At.ToLocalTime().ToString("HH:mm:ss")</time>
+                    </article>
+                }
+            }
+
+            @if (_isRunning && !HasStreamingAssistantMessage())
+            {
+                <div class="ops-loading">
+                    <span class="ops-spinner"></span>
+                    正在启动诊断…
+                </div>
+            }
+        </section>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="ops-error">@_error</div>
+        }
+
+        <footer class="ops-input-bar">
+            <textarea @bind="_input"
+                      @bind:event="oninput"
+                      @onkeydown="HandleKeyDown"
+                      @oncompositionstart="HandleCompositionStart"
+                      @oncompositionend="HandleCompositionEnd"
+                      placeholder="描述你要排查的问题…"
+                      rows="2"
+                      disabled="@_isRunning"></textarea>
+            <div class="ops-actions">
+                <button type="button" class="btn-primary" @onclick="SendAsync" disabled="@(_isRunning || string.IsNullOrWhiteSpace(_input))">发送</button>
+            </div>
+        </footer>
+    </div>
 </div>
 
 <SettingsPanel IsOpen="_settingsOpen"
@@ -122,6 +156,7 @@
         if (firstRender)
         {
             await ModelSelection.InitializeAsync();
+            await Session.InitializeAsync();
             StateHasChanged();
         }
     }
@@ -134,6 +169,48 @@
     {
         ModelSelection.SetModelId(modelId);
         return Task.CompletedTask;
+    }
+
+    private async Task CreateSessionAsync()
+    {
+        _error = null;
+        try
+        {
+            await Session.CreateSessionAsync();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task SwitchSessionAsync(string sessionId)
+    {
+        _error = null;
+        try
+        {
+            await Session.SwitchSessionAsync(sessionId);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task DeleteSessionAsync(string sessionId)
+    {
+        _error = null;
+        try
+        {
+            await Session.DeleteSessionAsync(sessionId);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
     }
 
     private async Task SendAsync()
@@ -167,19 +244,6 @@
             _cts?.Dispose();
             _cts = null;
             StateHasChanged();
-        }
-    }
-
-    private async Task ClearChatAsync()
-    {
-        _error = null;
-        try
-        {
-            Session.Clear();
-        }
-        catch (Exception ex)
-        {
-            _error = ex.Message;
         }
     }
 

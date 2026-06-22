@@ -1,6 +1,8 @@
 using OpsGuard.App;
 using OpsGuard.App.DependencyInjection;
 using OpsGuard.App.Services;
+using OpsGuard.App.Services.Conversations;
+using OpsGuard.Core.Configuration;
 using OpsGuard.Web;
 using OpsGuard.Web.Components;
 using OpsGuard.Web.Services;
@@ -21,11 +23,14 @@ builder.Configuration
     .AddEnvironmentVariables();
 
 var topologyPath = OpsGuardContentRoot.ResolveTopologyPath(args, contentRoot);
+var conversationDir = ResolveConversationDirectory(builder.Configuration, contentRoot);
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
 builder.Services.AddOpsGuard(builder.Configuration, topologyPath);
+builder.Services.Configure<ConversationStoreOptions>(options => options.Directory = conversationDir);
+builder.Services.AddSingleton<IConversationStore, JsonConversationStore>();
 builder.Services.AddScoped<IUserModelSelection, BrowserUserModelSelection>();
 builder.Services.AddScoped<DiagnosticSessionService>();
 builder.Services.AddSingleton(new WebAppInfo(topologyPath));
@@ -45,3 +50,18 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 app.Run();
+
+static string ResolveConversationDirectory(IConfiguration configuration, string contentRoot)
+{
+    var envDir = Environment.GetEnvironmentVariable("OPSGUARD_CONVERSATIONS_DIR");
+    if (!string.IsNullOrWhiteSpace(envDir))
+    {
+        return Path.GetFullPath(envDir);
+    }
+
+    var configured = configuration[$"{ConversationStoreOptions.SectionName}:Directory"];
+    var relative = string.IsNullOrWhiteSpace(configured) ? "data/conversations" : configured;
+    return Path.IsPathRooted(relative)
+        ? Path.GetFullPath(relative)
+        : Path.GetFullPath(Path.Combine(contentRoot, relative));
+}
