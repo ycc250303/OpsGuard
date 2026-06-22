@@ -1,0 +1,66 @@
+@using OpsGuard.Core.Configuration
+
+@if (IsOpen)
+{
+    <div class="ops-settings-backdrop" @onclick="CloseAsync"></div>
+    <dialog class="ops-settings-dialog" open>
+        <header class="ops-settings-header">
+            <h2>设置</h2>
+            <button type="button" class="ops-settings-close" aria-label="关闭" @onclick="CloseAsync">×</button>
+        </header>
+
+        <section class="ops-settings-body">
+            <h3>对话模型</h3>
+            <p class="ops-settings-hint">切换后下一条诊断生效，选择会保存在本浏览器。</p>
+
+            <div class="ops-model-list">
+                @foreach (var model in LlmModelCatalog.Supported)
+                {
+                    <label class="ops-model-option @(model.Id == _draftModelId ? "selected" : "")">
+                        <input type="radio"
+                               name="llmModel"
+                               value="@model.Id"
+                               checked="@(model.Id == _draftModelId)"
+                               @onchange="() => SelectModel(model.Id)" />
+                        <span class="ops-model-text">
+                            <strong>@model.DisplayName</strong>
+                            <small>@model.Id · @model.Description</small>
+                        </span>
+                    </label>
+                }
+            </div>
+        </section>
+
+        <footer class="ops-settings-footer">
+            <button type="button" class="btn-secondary" @onclick="CloseAsync">取消</button>
+            <button type="button" class="btn-primary" @onclick="SaveAsync">保存</button>
+        </footer>
+    </dialog>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public string ModelId { get; set; } = LlmModelCatalog.Default;
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<string> OnSave { get; set; }
+
+    private string _draftModelId = LlmModelCatalog.Default;
+
+    protected override void OnParametersSet()
+    {
+        if (IsOpen)
+        {
+            _draftModelId = ModelId;
+        }
+    }
+
+    private void SelectModel(string modelId) => _draftModelId = modelId;
+
+    private async Task SaveAsync()
+    {
+        await OnSave.InvokeAsync(_draftModelId);
+        await CloseAsync();
+    }
+
+    private async Task CloseAsync() => await OnClose.InvokeAsync();
+}

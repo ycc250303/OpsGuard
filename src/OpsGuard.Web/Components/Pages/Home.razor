@@ -1,7 +1,10 @@
 @page "/"
 @rendermode InteractiveServer
+@using OpsGuard.Core.Configuration
 @using OpsGuard.Core.Memory
+@using OpsGuard.App.Services
 @inject DiagnosticSessionService Session
+@inject IUserModelSelection ModelSelection
 @inject WebAppInfo AppInfo
 @implements IDisposable
 
@@ -14,8 +17,14 @@
             <p class="ops-subtitle">Linux 主机 + Docker Compose 运维诊断 Agent</p>
         </div>
         <div class="ops-meta">
-            <span class="ops-badge">Collector → Analyzer → Advisor</span>
-            
+            <div class="ops-meta-row">
+                <span class="ops-badge">Collector → Analyzer → Advisor</span>
+                <button type="button" class="btn-settings" @onclick="OpenSettings" disabled="@_isRunning" title="设置">
+                    <span class="ops-settings-icon" aria-hidden="true">⚙</span>
+                    设置
+                </button>
+            </div>
+            <span class="ops-model-badge">模型: @ModelSelection.ModelId</span>
             <span class="ops-topology">本机: @_machineName (@_osPlatform)</span>
         </div>
     </header>
@@ -92,15 +101,40 @@
     </footer>
 </div>
 
+<SettingsPanel IsOpen="_settingsOpen"
+               ModelId="@ModelSelection.ModelId"
+               OnClose="CloseSettings"
+               OnSave="SaveSettingsAsync" />
+
 @code {
     private ElementReference _chatContainer;
     private string _input = string.Empty;
     private string? _error;
     private bool _isRunning;
     private bool _isComposing;
+    private bool _settingsOpen;
     private CancellationTokenSource? _cts;
     private readonly string _machineName = OpsGuardRuntimeContext.Current().MachineName;
     private readonly string _osPlatform = OpsGuardRuntimeContext.Current().OsPlatform;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await ModelSelection.InitializeAsync();
+            StateHasChanged();
+        }
+    }
+
+    private void OpenSettings() => _settingsOpen = true;
+
+    private void CloseSettings() => _settingsOpen = false;
+
+    private Task SaveSettingsAsync(string modelId)
+    {
+        ModelSelection.SetModelId(modelId);
+        return Task.CompletedTask;
+    }
 
     private async Task SendAsync()
     {

@@ -24,8 +24,12 @@ internal static class ConsoleHost
             .AddOpsGuard(configuration, topologyPath)
             .BuildServiceProvider();
 
-        var orchestrator = services.GetRequiredService<OpsGuardOrchestrator>();
-        var session = new DiagnosticSessionService(orchestrator, services.GetRequiredService<IOptions<AgentOptions>>());
+        var orchestratorFactory = services.GetRequiredService<OpsGuardOrchestratorFactory>();
+        var modelSelection = services.GetRequiredService<IUserModelSelection>();
+        var session = new DiagnosticSessionService(
+            orchestratorFactory,
+            modelSelection,
+            services.GetRequiredService<IOptions<AgentOptions>>());
 
         PrintWelcome(topologyPath);
 

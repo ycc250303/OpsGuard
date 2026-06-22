@@ -44,7 +44,8 @@ public static class OpsGuardServiceCollectionExtensions
             return llmOptions;
         });
 
-        services.AddSingleton<OpsGuardOrchestrator>();
+        services.AddSingleton<OpsGuardOrchestratorFactory>();
+        services.AddSingleton<IUserModelSelection, ConfigUserModelSelection>();
 
         return services;
     }

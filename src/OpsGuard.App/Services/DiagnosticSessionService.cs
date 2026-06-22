@@ -12,16 +12,21 @@ public sealed class DiagnosticSessionService
 {
     private const int StreamNotifyIntervalMs = 80;
 
-    private readonly OpsGuardOrchestrator _orchestrator;
+    private readonly OpsGuardOrchestratorFactory _orchestratorFactory;
+    private readonly IUserModelSelection _modelSelection;
     private readonly AgentOptions _agentOptions;
     private readonly ChatHistory _chatHistory = new();
     private readonly ChatHistoryAgentThread _agentThread;
+    private OpsGuardOrchestrator? _orchestrator;
+    private string? _orchestratorModelId;
 
     public DiagnosticSessionService(
-        OpsGuardOrchestrator orchestrator,
+        OpsGuardOrchestratorFactory orchestratorFactory,
+        IUserModelSelection modelSelection,
         IOptions<AgentOptions> agentOptions)
     {
-        _orchestrator = orchestrator;
+        _orchestratorFactory = orchestratorFactory;
+        _modelSelection = modelSelection;
         _agentOptions = agentOptions.Value;
         _agentThread = new ChatHistoryAgentThread(_chatHistory);
     }
@@ -102,7 +107,7 @@ public sealed class DiagnosticSessionService
             DiagnosticStreamContext.SetNotifier(ApplyChunk);
             try
             {
-                await foreach (var chunk in _orchestrator.RunStreamingAsync(taskPrompt, cancellationToken))
+                await foreach (var chunk in ResolveOrchestrator().RunStreamingAsync(taskPrompt, cancellationToken))
                 {
                     ApplyChunk(chunk);
                 }
@@ -159,6 +164,18 @@ public sealed class DiagnosticSessionService
     }
 
     private static void Notify(Action? onUpdated) => onUpdated?.Invoke();
+
+    private OpsGuardOrchestrator ResolveOrchestrator()
+    {
+        var modelId = _modelSelection.ModelId;
+        if (_orchestrator is null || !string.Equals(_orchestratorModelId, modelId, StringComparison.Ordinal))
+        {
+            _orchestrator = _orchestratorFactory.Create(modelId);
+            _orchestratorModelId = modelId;
+        }
+
+        return _orchestrator;
+    }
 }
 
 public sealed record ChatMessage(string Role, string Content, DateTimeOffset At)
