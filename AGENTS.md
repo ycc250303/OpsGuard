@@ -19,9 +19,9 @@
 ## 编码约束
 
 - 使用**简体中文**沟通
-- 未明确要求时不主动 git commit 或创建 PR
-- **Git 提交记录均用中文描述**：`description`、正文（body）及 Agent 给出的建议 commit message 须为中文；`type`/`scope` 可保留英文惯例（如 `feat`、`plugins`）
-- **每完成一项独立修改**，须向用户给出符合上条的中文建议 commit message（格式见 Git 提交规范）；用户未要求时不执行 commit
+- **Bug 修复或功能添加完成后**：须先跑通相关 `dotnet test`，再**主动** `git commit` 并 `git push origin main`，触发 CD 部署；勿仅给出建议 message 而等待用户催促
+- **Git 提交记录均用中文描述**：`description`、正文（body）及 commit message 须为中文；`type`/`scope` 可保留英文惯例（如 `feat`、`plugins`）
+- **一次提交一件事**：多个独立 bug/功能分多次 commit + push；纯问答、文档阅读、无代码改动时不 commit
 - 写代码时简要说明关键决策；纯问答优先讲清原理
 - **排错分类**：须先区分**实现 bug**（如 JSON 解析、serviceId 校验遗漏、Docker 客户端异常未捕获）与**可预期的运维/环境异常**（容器未运行、磁盘满、HealthUrl 不可达、API Key 缺失）。前者修代码并补测试；后者在日志与报告中给出可理解说明，**不要**用异常掩盖实现缺陷
 - **设计文档**：新基建或重要功能须在 [`docs/`](docs/) 同批交付（如 `architecture.md` 增量）；单篇 ≤250 行；用户说「不要文档」时除外
@@ -151,6 +151,8 @@ ssh -i ~/.ssh/github_actions_deploy root@111.229.81.45
 
 `main` push 触发 [`.github/workflows/cd.yml`](.github/workflows/cd.yml)，并发组 `opsguard-server-deploy`，自动部署 App（`/opt/opsguard`）与 Web（`/opt/opsguard-web:5229`）。仓库 Secrets：`OPSGUARD_SSH_HOST`、`OPSGUARD_SSH_PRIVATE_KEY`、可选 `DASHSCOPE_API_KEY`。详见 [`docs/运行与指令.md`](docs/运行与指令.md) §8。
 
+**Agent 部署流程**（与「编码约束」联动）：`src/`/`tests/`/`docs/` 等有实质变更且测试通过后 → `git add` 相关文件 → 中文 commit → `git push origin main` → 回复中说明 commit hash 与 CD 已触发；**禁止**提交 `.env`、密钥、`bin/`/`obj/` 等产物。
+
 **运行用户**：执行 Agent 的用户须在 `docker` 组，否则 Compose 相关工具无法工作。
 
 **首次配置步骤**：
@@ -173,7 +175,7 @@ ssh -i ~/.ssh/github_actions_deploy root@111.229.81.45
 
 规则：**description 与 body 均使用中文**；描述祈使句、≤50 字、首字母小写、不加句号；一次提交一件事。
 
-**Agent 流程**：每完成一项独立修改（含 docs/配置/拓扑示例），在回复末尾给出一条**中文**建议 commit message；用户明确要求时再执行 commit。
+**Agent 流程**：每完成一项 bug 修复或功能添加 → 测试通过 → **立即 commit 并 push 至 `main`**（触发 CD）；回复末尾注明 commit hash。格式见上；用户明确说「不要提交/不要部署」时除外。
 
 **常用 scope**：`app`、`core`、`plugins`、`infra`、`docs`、`test`。
 
