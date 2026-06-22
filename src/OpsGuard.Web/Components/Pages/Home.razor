@@ -38,7 +38,10 @@
             @foreach (var message in Session.Messages)
             {
                 <article class="ops-message @(message.IsUser ? "user" : "assistant")">
-                    <div class="ops-message-role">@(message.IsUser ? "你" : "OpsGuard")</div>
+                    @if (!message.IsUser)
+                    {
+                        <div class="ops-message-role">OpsGuard</div>
+                    }
                     @if (message.IsUser)
                     {
                         <div class="ops-message-body">@message.Content</div>
