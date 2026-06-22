@@ -12,6 +12,7 @@
     <ProjectReference Include="..\..\src\OpsGuard.Core\OpsGuard.Core.csproj" />
     <ProjectReference Include="..\..\src\OpsGuard.Plugins\OpsGuard.Plugins.csproj" />
     <ProjectReference Include="..\..\src\OpsGuard.Infrastructure\OpsGuard.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\OpsGuard.Web\OpsGuard.Web.csproj" />
   </ItemGroup>
 
   <ItemGroup>

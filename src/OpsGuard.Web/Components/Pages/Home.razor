@@ -77,6 +77,8 @@
         <textarea @bind="_input"
                   @bind:event="oninput"
                   @onkeydown="HandleKeyDown"
+                  @oncompositionstart="HandleCompositionStart"
+                  @oncompositionend="HandleCompositionEnd"
                   placeholder="描述你要排查的问题…"
                   rows="2"
                   disabled="@_isRunning"></textarea>
@@ -92,6 +94,7 @@
     private string _input = string.Empty;
     private string? _error;
     private bool _isRunning;
+    private bool _isComposing;
     private CancellationTokenSource? _cts;
     private readonly string _machineName = OpsGuardRuntimeContext.Current().MachineName;
     private readonly string _osPlatform = OpsGuardRuntimeContext.Current().OsPlatform;
@@ -143,9 +146,13 @@
         }
     }
 
+    private void HandleCompositionStart() => _isComposing = true;
+
+    private void HandleCompositionEnd() => _isComposing = false;
+
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Enter" && !e.ShiftKey)
+        if (e.Key == "Enter" && !e.ShiftKey && !e.IsComposing && !_isComposing)
         {
             await SendAsync();
         }
