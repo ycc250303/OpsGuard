@@ -18,7 +18,7 @@ public sealed class ComposeStatusPlugin
     }
 
     [KernelFunction("GetComposeServiceStatus")]
-    [Description("查询 JSON 拓扑中指定 serviceId 对应容器的运行状态。")]
+    [Description("查询已发现清单中指定 serviceId 对应容器的运行状态。")]
     public async Task<string> GetComposeServiceStatusAsync(
         [Description("拓扑 JSON 中的服务 Id，例如 backend")] string serviceId,
         CancellationToken cancellationToken = default)
@@ -28,7 +28,7 @@ public sealed class ComposeStatusPlugin
             return DiagnosticJson.Serialize(new
             {
                 success = false,
-                error = $"Unknown serviceId '{serviceId}'. Call GetComposeTopology first."
+                error = $"Unknown serviceId '{serviceId}'. Call GetComposeTopology or DiscoverDockerServices first."
             });
         }
 

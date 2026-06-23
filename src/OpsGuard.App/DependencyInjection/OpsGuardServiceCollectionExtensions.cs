@@ -26,10 +26,8 @@ public static class OpsGuardServiceCollectionExtensions
         services.Configure<ConversationStoreOptions>(configuration.GetSection(ConversationStoreOptions.SectionName));
         services.Configure<ComposeTopologyOptions>(options => options.TopologyFile = topologyPath);
 
-        var topologyProvider = new ComposeTopologyProvider(topologyPath);
-        services.AddSingleton<IComposeTopologyProvider>(topologyProvider);
-        services.AddSingleton<IServiceCatalog, ServiceCatalog>();
-        services.AddSingleton<ServerContextMemory>();
+        var overlayProvider = new TopologyOverlayProvider(topologyPath);
+        services.AddSingleton<ITopologyOverlayProvider>(overlayProvider);
 
         services.AddOpsGuardInfrastructure();
         services.AddOpsGuardPlugins();
@@ -46,6 +44,8 @@ public static class OpsGuardServiceCollectionExtensions
             return llmOptions;
         });
 
+        services.AddSingleton<IServiceCatalog, DynamicServiceCatalog>();
+        services.AddSingleton<ServerContextMemory>();
         services.AddSingleton<OpsGuardOrchestratorFactory>();
         services.AddSingleton<IUserModelSelection, ConfigUserModelSelection>();
         services.AddSingleton<IConversationStore, NullConversationStore>();

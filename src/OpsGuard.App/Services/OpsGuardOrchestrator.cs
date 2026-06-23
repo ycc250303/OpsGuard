@@ -8,6 +8,7 @@ using Microsoft.SemanticKernel.Connectors.OpenAI;
 using OpsGuard.Core.Agents;
 using OpsGuard.Core.Configuration;
 using OpsGuard.Core.Streaming;
+using OpsGuard.Core.Topology;
 using OpsGuard.Infrastructure.Streaming;
 using OpsGuard.Core.Memory;
 using OpsGuard.Infrastructure.Llm;
@@ -20,20 +21,25 @@ public sealed class OpsGuardOrchestrator
     private readonly ChatCompletionAgent _collector;
     private readonly ChatCompletionAgent _analyzer;
     private readonly ChatCompletionAgent _advisor;
+    private readonly IServiceCatalog _serviceCatalog;
+    private readonly ServerContextMemory _serverContextMemory;
     private readonly AgentOptions _agentOptions;
     private readonly ILogger<OpsGuardOrchestrator> _logger;
 
     public OpsGuardOrchestrator(
         IServiceProvider services,
         LlmOptions llmOptions,
+        IServiceCatalog serviceCatalog,
         ServerContextMemory serverContextMemory,
         IOptions<AgentOptions> agentOptions,
         ILogger<OpsGuardOrchestrator> logger)
     {
+        _serviceCatalog = serviceCatalog;
+        _serverContextMemory = serverContextMemory;
         _agentOptions = agentOptions.Value;
         _logger = logger;
 
-        var contextSummary = serverContextMemory.BuildSummary();
+        var contextSummary = serverContextMemory.BuildAgentContext();
         var collectorKernel = services.BuildCollectorKernel(llmOptions);
         collectorKernel.RegisterOpsGuardPlugins(services);
 
@@ -88,9 +94,13 @@ public sealed class OpsGuardOrchestrator
 
         _logger.LogInformation("Starting multi-agent pipeline (token streaming)");
 
+        await _serviceCatalog.RefreshAsync(timeoutCts.Token);
+        var liveSummary = _serverContextMemory.BuildLiveSummary();
+        var collectorInput = $"{liveSummary}\n\n{taskPrompt}";
+
         var collectorFacts = string.Empty;
         await foreach (var chunk in InvokeAgentStageStreamingAsync(
-            _collector, "Collector", taskPrompt, timeoutCts.Token))
+            _collector, "Collector", collectorInput, timeoutCts.Token))
         {
             if (chunk.Phase == DiagnosticChunkPhase.Completed)
             {

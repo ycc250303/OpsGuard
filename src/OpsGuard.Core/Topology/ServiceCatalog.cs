@@ -11,9 +11,19 @@ public sealed class ServiceCatalog : IServiceCatalog
         ArgumentNullException.ThrowIfNull(topologyProvider);
         Topology = topologyProvider.Topology;
         _services = Topology.Services.ToDictionary(s => s.Id, s => s, StringComparer.OrdinalIgnoreCase);
+        LastRefreshedAt = DateTimeOffset.UtcNow;
+    }
+
+    public ServiceCatalog(ComposeTopology topology)
+    {
+        Topology = topology;
+        _services = topology.Services.ToDictionary(s => s.Id, s => s, StringComparer.OrdinalIgnoreCase);
+        LastRefreshedAt = DateTimeOffset.UtcNow;
     }
 
     public ComposeTopology Topology { get; }
+
+    public DateTimeOffset? LastRefreshedAt { get; private set; }
 
     public IReadOnlyList<ComposeServiceDefinition> GetAllServices() => Topology.Services;
 
@@ -38,5 +48,11 @@ public sealed class ServiceCatalog : IServiceCatalog
 
         containerName = new ValidatedContainerName(service.ContainerName);
         return true;
+    }
+
+    public Task RefreshAsync(CancellationToken cancellationToken = default)
+    {
+        LastRefreshedAt = DateTimeOffset.UtcNow;
+        return Task.CompletedTask;
     }
 }

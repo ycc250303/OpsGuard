@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
 using OpsGuard.Core.Configuration;
+using OpsGuard.Core.Topology;
 using OpsGuard.Infrastructure.Docker;
 using OpsGuard.Infrastructure.Host;
 using OpsGuard.Infrastructure.Logging;
@@ -15,6 +16,7 @@ public static class InfrastructureServiceCollectionExtensions
     public static IServiceCollection AddOpsGuardInfrastructure(this IServiceCollection services)
     {
         services.AddSingleton<IProcessRunner, ProcessRunner>();
+        services.AddSingleton<IDockerContainerDiscovery, DockerContainerDiscovery>();
         services.AddSingleton<IComposeDockerClient, ComposeDockerClient>();
         services.AddSingleton<IHostMetricsReader, LinuxHostMetricsReader>();
         services.AddSingleton<IHttpEndpointChecker, HttpEndpointChecker>();

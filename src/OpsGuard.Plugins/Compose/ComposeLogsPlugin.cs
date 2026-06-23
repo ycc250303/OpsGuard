@@ -25,9 +25,9 @@ public sealed class ComposeLogsPlugin
     }
 
     [KernelFunction("QueryComposeServiceLogs")]
-    [Description("获取拓扑中 serviceId 对应容器的 docker logs。支持按时间起点过滤（--since）并带时间戳；仍受 tailLines 上限约束。")]
+    [Description("获取已发现清单中 serviceId 对应容器的 docker logs。支持按时间起点过滤（--since）并带时间戳；仍受 tailLines 上限约束。")]
     public async Task<string> QueryComposeServiceLogsAsync(
-        [Description("拓扑 JSON 中的服务 Id，例如 backend")] string serviceId,
+        [Description("服务 Id，例如 backend")] string serviceId,
         [Description("日志行数上限，最大 200")] int tailLines = 100,
         [Description("仅返回该时间点之后的日志。相对时间：72h（三天）、24h、30m；或 ISO 时间如 2024-01-01T00:00:00Z。留空则只取尾部 tailLines 行")] string? since = null,
         CancellationToken cancellationToken = default)
@@ -37,7 +37,7 @@ public sealed class ComposeLogsPlugin
             return DiagnosticJson.Serialize(new
             {
                 success = false,
-                error = $"Unknown serviceId '{serviceId}'. Call GetComposeTopology first."
+                error = $"Unknown serviceId '{serviceId}'. Call GetComposeTopology or DiscoverDockerServices first."
             });
         }
 

@@ -18,9 +18,9 @@ public sealed class HttpCheckPlugin
     }
 
     [KernelFunction("CheckHttpEndpoint")]
-    [Description("对 JSON 拓扑中配置了 HealthUrl 的服务执行 HTTP GET 探活。")]
+    [Description("对已发现清单中配置了 HealthUrl 的服务执行 HTTP GET 探活。")]
     public async Task<string> CheckHttpEndpointAsync(
-        [Description("拓扑 JSON 中的服务 Id，例如 web-gateway")] string serviceId,
+        [Description("服务 Id，例如 web-gateway")] string serviceId,
         CancellationToken cancellationToken = default)
     {
         if (!_serviceCatalog.TryGetService(serviceId, out var service) || service is null)
@@ -28,7 +28,7 @@ public sealed class HttpCheckPlugin
             return DiagnosticJson.Serialize(new
             {
                 success = false,
-                error = $"Unknown serviceId '{serviceId}'. Call GetComposeTopology first."
+                error = $"Unknown serviceId '{serviceId}'. Call GetComposeTopology or DiscoverDockerServices first."
             });
         }
 

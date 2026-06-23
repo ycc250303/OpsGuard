@@ -14,4 +14,10 @@ public sealed class AgentOptions
     public int OrchestrationTimeoutMinutes { get; set; } = 5;
 
     public int ConversationHistoryTurns { get; set; } = 6;
+
+    /// <summary>仅发现带 Compose 项目标签的容器。</summary>
+    public bool DockerDiscoveryComposeOnly { get; set; } = true;
+
+    /// <summary>自动发现时排除的容器名前缀。</summary>
+    public string[] DockerDiscoveryExcludeNamePrefixes { get; set; } = ["opsguard-"];
 }
