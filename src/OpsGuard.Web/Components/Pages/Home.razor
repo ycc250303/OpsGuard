@@ -51,13 +51,10 @@
                 <p class="ops-subtitle">Linux 主机 + Docker Compose 运维诊断 Agent</p>
             </div>
             <div class="ops-meta">
-                <div class="ops-meta-row">
-                    <span class="ops-badge">Collector → Analyzer → Advisor</span>
-                    <button type="button" class="btn-settings" @onclick="OpenSettings" disabled="@_isRunning" title="设置">
-                        <span class="ops-settings-icon" aria-hidden="true">⚙</span>
-                        设置
-                    </button>
-                </div>
+                <button type="button" class="btn-settings" @onclick="OpenSettings" disabled="@_isRunning" title="设置">
+                    <span class="ops-settings-icon" aria-hidden="true">⚙</span>
+                    设置
+                </button>
                 <span class="ops-model-badge">模型: @ModelSelection.ModelId</span>
                 <span class="ops-topology">本机: @_machineName (@_osPlatform)</span>
             </div>
@@ -81,10 +78,6 @@
                 @foreach (var message in Session.Messages)
                 {
                     <article class="ops-message @(message.IsUser ? "user" : "assistant")">
-                        @if (!message.IsUser)
-                        {
-                            <div class="ops-message-role">OpsGuard</div>
-                        }
                         @if (message.IsUser)
                         {
                             <div class="ops-message-body">@message.Content</div>
