@@ -14,14 +14,15 @@ internal static class AgentSmokeTest
     public static async Task<int> RunAsync(IServiceProvider services)
     {
         var llmOptions = services.GetRequiredService<LlmOptions>();
-        if (string.IsNullOrWhiteSpace(llmOptions.ApiKey)
-            && string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("DASHSCOPE_API_KEY")))
+        var modelId = LlmModelCatalog.NormalizeOrDefault(llmOptions.ModelId);
+        if (!LlmModelCatalog.IsApiKeyConfigured(modelId))
         {
-            Console.WriteLine("[FAIL] DASHSCOPE_API_KEY 未配置");
+            var provider = LlmModelCatalog.GetProviderForModel(modelId);
+            Console.WriteLine($"[FAIL] {provider.ApiKeyEnvironmentVariable} 未配置（模型 {modelId}）");
             return 1;
         }
 
-        Console.WriteLine("[OK] API Key 已加载");
+        Console.WriteLine($"[OK] API Key 已加载（模型 {modelId}）");
 
         var hostPlugin = services.GetRequiredService<HostMetricsPlugin>();
         var hostJson = await hostPlugin.GetHostMetricsAsync();

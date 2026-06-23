@@ -14,15 +14,8 @@ public sealed class OpsGuardOrchestratorFactory
         _baseOptions = baseOptions;
     }
 
-    public OpsGuardOrchestrator Create(string modelId)
-    {
-        var options = new LlmOptions
-        {
-            ModelId = LlmModelCatalog.NormalizeOrThrow(modelId),
-            Endpoint = _baseOptions.Endpoint,
-            ApiKey = _baseOptions.ApiKey
-        };
-
-        return ActivatorUtilities.CreateInstance<OpsGuardOrchestrator>(_services, options);
-    }
+    public OpsGuardOrchestrator Create(string modelId) =>
+        ActivatorUtilities.CreateInstance<OpsGuardOrchestrator>(
+            _services,
+            LlmModelCatalog.ResolveOptions(modelId, _baseOptions));
 }

@@ -11,24 +11,29 @@
 
         <section class="ops-settings-body">
             <h3>对话模型</h3>
-            <p class="ops-settings-hint">切换后下一条诊断生效，选择会保存在本浏览器。</p>
+            <p class="ops-settings-hint">切换后下一条诊断生效，选择会保存在本浏览器。各 Provider 需配置对应 API Key 环境变量。</p>
 
-            <div class="ops-model-list">
-                @foreach (var model in LlmModelCatalog.Supported)
-                {
-                    <label class="ops-model-option @(model.Id == _draftModelId ? "selected" : "")">
-                        <input type="radio"
-                               name="llmModel"
-                               value="@model.Id"
-                               checked="@(model.Id == _draftModelId)"
-                               @onchange="() => SelectModel(model.Id)" />
-                        <span class="ops-model-text">
-                            <strong>@model.DisplayName</strong>
-                            <small>@model.Id · @model.Description</small>
-                        </span>
-                    </label>
-                }
-            </div>
+            @foreach (var group in LlmModelCatalog.Supported.GroupBy(model => model.ProviderId))
+            {
+                var provider = LlmModelCatalog.GetProvider(group.Key);
+                <h4 class="ops-model-provider">@provider.DisplayName</h4>
+                <div class="ops-model-list">
+                    @foreach (var model in group)
+                    {
+                        <label class="ops-model-option @(model.Id == _draftModelId ? "selected" : "")">
+                            <input type="radio"
+                                   name="llmModel"
+                                   value="@model.Id"
+                                   checked="@(model.Id == _draftModelId)"
+                                   @onchange="() => SelectModel(model.Id)" />
+                            <span class="ops-model-text">
+                                <strong>@model.DisplayName</strong>
+                                <small>@model.Id · @model.Description · Key: @provider.ApiKeyEnvironmentVariable</small>
+                            </span>
+                        </label>
+                    }
+                </div>
+            }
         </section>
 
         <footer class="ops-settings-footer">

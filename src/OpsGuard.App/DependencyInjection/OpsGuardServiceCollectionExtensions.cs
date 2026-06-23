@@ -37,10 +37,10 @@ public static class OpsGuardServiceCollectionExtensions
         services.AddSingleton(sp =>
         {
             var llmOptions = sp.GetRequiredService<IOptions<LlmOptions>>().Value;
-            var apiKey = Environment.GetEnvironmentVariable("DASHSCOPE_API_KEY");
-            if (!string.IsNullOrWhiteSpace(apiKey))
+            var dashScopeKey = Environment.GetEnvironmentVariable("DASHSCOPE_API_KEY");
+            if (!string.IsNullOrWhiteSpace(dashScopeKey))
             {
-                llmOptions.ApiKey = apiKey;
+                llmOptions.ApiKey = dashScopeKey;
             }
 
             return llmOptions;

@@ -307,6 +307,17 @@ html, body {
     font-size: 0.82rem;
 }
 
+.ops-model-provider {
+    margin: 0.85rem 0 0.45rem;
+    font-size: 0.84rem;
+    color: var(--ops-text-muted);
+    font-weight: 600;
+}
+
+.ops-model-provider:first-of-type {
+    margin-top: 0;
+}
+
 .ops-model-list {
     display: flex;
     flex-direction: column;

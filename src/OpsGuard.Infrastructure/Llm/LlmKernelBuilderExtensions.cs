@@ -11,19 +11,16 @@ public static class LlmKernelBuilderExtensions
 {
     public static IKernelBuilder AddOpsGuardChatCompletion(this IKernelBuilder builder, LlmOptions options)
     {
-        var apiKey = string.IsNullOrWhiteSpace(options.ApiKey)
-            ? Environment.GetEnvironmentVariable("DASHSCOPE_API_KEY")
-            : options.ApiKey;
-
-        if (string.IsNullOrWhiteSpace(apiKey))
+        if (string.IsNullOrWhiteSpace(options.ApiKey))
         {
+            var provider = LlmModelCatalog.GetProviderForModel(options.ModelId);
             throw new InvalidOperationException(
-                "DASHSCOPE_API_KEY environment variable is required. Set it before starting OpsGuard.");
+                $"{provider.ApiKeyEnvironmentVariable} 环境变量未配置，无法使用模型 {options.ModelId}。");
         }
 
         builder.AddOpenAIChatCompletion(
             modelId: options.ModelId,
-            apiKey: apiKey,
+            apiKey: options.ApiKey,
             endpoint: new Uri(options.Endpoint),
             httpClient: OpsGuardLlmHttpClient.Instance);
 
