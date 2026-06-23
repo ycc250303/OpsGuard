@@ -19,8 +19,16 @@ public static class LlmModelCatalog
 
     public const string Plus = "qwen3.6-plus";
     public const string Max = "qwen3.7-max";
-    public const string DeepSeekChat = "deepseek-chat";
-    public const string DeepSeekReasoner = "deepseek-reasoner";
+    public const string DeepSeekV4Flash = "deepseek-v4-flash";
+    public const string DeepSeekV4Pro = "deepseek-v4-pro";
+
+    /// <summary>已废弃模型 ID → 当前支持的 ID（兼容浏览器 localStorage 等旧配置）。</summary>
+    private static readonly IReadOnlyDictionary<string, string> LegacyModelAliases =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["deepseek-chat"] = DeepSeekV4Flash,
+            ["deepseek-reasoner"] = DeepSeekV4Pro
+        };
 
     public static readonly IReadOnlyList<LlmProviderDefinition> Providers =
     [
@@ -40,8 +48,8 @@ public static class LlmModelCatalog
     [
         new(Plus, "Qwen 3.6 Plus", "日常诊断，响应较快", ProviderDashScope),
         new(Max, "Qwen 3.7 Max", "复杂问题，推理更强", ProviderDashScope),
-        new(DeepSeekChat, "DeepSeek Chat", "通用对话，性价比高", ProviderDeepSeek),
-        new(DeepSeekReasoner, "DeepSeek Reasoner", "深度推理，适合复杂根因分析", ProviderDeepSeek)
+        new(DeepSeekV4Flash, "DeepSeek V4 Flash", "日常诊断，响应较快", ProviderDeepSeek),
+        new(DeepSeekV4Pro, "DeepSeek V4 Pro", "复杂问题，推理更强", ProviderDeepSeek)
     ];
 
     public static string Default => Plus;
@@ -96,6 +104,11 @@ public static class LlmModelCatalog
         }
 
         var trimmed = modelId.Trim();
+        if (LegacyModelAliases.TryGetValue(trimmed, out var alias))
+        {
+            trimmed = alias;
+        }
+
         return IsSupported(trimmed) ? trimmed : Default;
     }
 
@@ -107,6 +120,11 @@ public static class LlmModelCatalog
         }
 
         var trimmed = modelId.Trim();
+        if (LegacyModelAliases.TryGetValue(trimmed, out var alias))
+        {
+            trimmed = alias;
+        }
+
         if (!IsSupported(trimmed))
         {
             throw new ArgumentException(

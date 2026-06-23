@@ -7,10 +7,16 @@ public sealed class LlmModelCatalogTests
     [Theory]
     [InlineData("qwen3.6-plus", "qwen3.6-plus")]
     [InlineData("qwen3.7-max", "qwen3.7-max")]
-    [InlineData("deepseek-chat", "deepseek-chat")]
-    [InlineData("deepseek-reasoner", "deepseek-reasoner")]
+    [InlineData("deepseek-v4-flash", "deepseek-v4-flash")]
+    [InlineData("deepseek-v4-pro", "deepseek-v4-pro")]
     [InlineData(" qwen3.7-max ", "qwen3.7-max")]
     public void NormalizeOrThrow_accepts_supported_models(string input, string expected) =>
+        Assert.Equal(expected, LlmModelCatalog.NormalizeOrThrow(input));
+
+    [Theory]
+    [InlineData("deepseek-chat", "deepseek-v4-flash")]
+    [InlineData("deepseek-reasoner", "deepseek-v4-pro")]
+    public void NormalizeOrThrow_maps_legacy_deepseek_models(string input, string expected) =>
         Assert.Equal(expected, LlmModelCatalog.NormalizeOrThrow(input));
 
     [Theory]
@@ -27,8 +33,8 @@ public sealed class LlmModelCatalogTests
     [Fact]
     public void ResolveOptions_uses_deepseek_provider()
     {
-        var options = LlmModelCatalog.ResolveOptions(LlmModelCatalog.DeepSeekChat);
-        Assert.Equal(LlmModelCatalog.DeepSeekChat, options.ModelId);
+        var options = LlmModelCatalog.ResolveOptions(LlmModelCatalog.DeepSeekV4Flash);
+        Assert.Equal(LlmModelCatalog.DeepSeekV4Flash, options.ModelId);
         Assert.Equal("https://api.deepseek.com", options.Endpoint);
     }
 

@@ -145,7 +145,7 @@ internal static class ConsoleHost
                 Console.WriteLine($"  {model.Id}{marker} — {model.DisplayName} ({provider.DisplayName})");
             }
 
-            Console.WriteLine("切换: model <模型ID>，例如 model deepseek-chat");
+            Console.WriteLine("切换: model <模型ID>，例如 model deepseek-v4-flash");
             return;
         }
 
