@@ -1,0 +1,41 @@
+<div class="ops-message-body markdown @(IsStreaming ? "streaming" : null)">
+    @((MarkupString)_html)
+    @if (IsStreaming)
+    {
+        <span class="ops-cursor">▍</span>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Content { get; set; } = string.Empty;
+
+    [Parameter]
+    public bool IsStreaming { get; set; }
+
+    private string? _cachedContent;
+    private bool _cachedStreaming;
+    private string _html = string.Empty;
+
+    protected override bool ShouldRender()
+    {
+        if (IsStreaming)
+        {
+            return true;
+        }
+
+        return _cachedContent != Content || _cachedStreaming != IsStreaming;
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (_cachedContent == Content && _cachedStreaming == IsStreaming)
+        {
+            return;
+        }
+
+        _cachedContent = Content;
+        _cachedStreaming = IsStreaming;
+        _html = MarkdownRenderer.ToHtml(Content, streaming: IsStreaming);
+    }
+}

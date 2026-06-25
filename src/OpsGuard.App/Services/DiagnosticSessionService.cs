@@ -11,8 +11,6 @@ namespace OpsGuard.App.Services;
 
 public sealed class DiagnosticSessionService
 {
-    private const int StreamNotifyIntervalMs = 80;
-
     private readonly OpsGuardOrchestratorFactory _orchestratorFactory;
     private readonly IUserModelSelection _modelSelection;
     private readonly IConversationStore _conversationStore;
@@ -133,7 +131,7 @@ public sealed class DiagnosticSessionService
 
     public async Task<string> AskStreamingAsync(
         string userInput,
-        Action? onUpdated = null,
+        Func<Task>? onUpdated = null,
         CancellationToken cancellationToken = default)
     {
         await EnsureInitializedAsync(cancellationToken);
@@ -153,11 +151,12 @@ public sealed class DiagnosticSessionService
         _messages.Add(ChatMessage.User(userInput));
         var assistantIndex = _messages.Count;
         _messages.Add(ChatMessage.Assistant(string.Empty));
-        Notify(onUpdated);
+        await NotifyAsync(onUpdated);
 
         var streamBuilder = new DiagnosticStreamBuilder();
         var advisorReport = string.Empty;
         var lastNotifyAt = DateTime.UtcNow;
+        var lastNotifiedMarkdown = string.Empty;
 
         void ApplyChunk(DiagnosticChunk chunk)
         {
@@ -172,16 +171,23 @@ public sealed class DiagnosticSessionService
 
             var now = DateTime.UtcNow;
             var shouldNotify = chunk.Phase is not DiagnosticChunkPhase.Delta
-                || (now - lastNotifyAt).TotalMilliseconds >= StreamNotifyIntervalMs;
+                || (now - lastNotifyAt).TotalMilliseconds >= _agentOptions.StreamUiNotifyIntervalMs;
 
             if (!shouldNotify)
             {
                 return;
             }
 
+            var markdown = streamBuilder.BuildMarkdown(streaming: true);
+            if (markdown == lastNotifiedMarkdown)
+            {
+                return;
+            }
+
             lastNotifyAt = now;
-            _messages[assistantIndex] = ChatMessage.Assistant(streamBuilder.BuildMarkdown(streaming: true));
-            Notify(onUpdated);
+            lastNotifiedMarkdown = markdown;
+            _messages[assistantIndex] = ChatMessage.Assistant(markdown);
+            ScheduleNotify(onUpdated);
         }
 
         try
@@ -211,7 +217,7 @@ public sealed class DiagnosticSessionService
             }
 
             _messages[assistantIndex] = ChatMessage.Assistant(streamBuilder.BuildMarkdown(streaming: false));
-            Notify(onUpdated);
+            await NotifyAsync(onUpdated);
 
             var finalContent = _messages[assistantIndex].Content;
             _chatHistory.AddAssistantMessage(finalContent);
@@ -227,7 +233,7 @@ public sealed class DiagnosticSessionService
             var error = $"诊断超时（{_agentOptions.OrchestrationTimeoutMinutes} 分钟），请缩小问题范围后重试。";
             _messages[assistantIndex] = ChatMessage.Assistant(error);
             _chatHistory.AddAssistantMessage(error);
-            Notify(onUpdated);
+            await NotifyAsync(onUpdated);
             await PersistCurrentSessionAsync(userInput, cancellationToken);
             return error;
         }
@@ -236,7 +242,7 @@ public sealed class DiagnosticSessionService
             var error = $"诊断失败: {ex.Message}";
             _messages[assistantIndex] = ChatMessage.Assistant(error);
             _chatHistory.AddAssistantMessage(error);
-            Notify(onUpdated);
+            await NotifyAsync(onUpdated);
             await PersistCurrentSessionAsync(userInput, cancellationToken);
             return error;
         }
@@ -245,7 +251,7 @@ public sealed class DiagnosticSessionService
             IsRunning = false;
             DiagnosticStreamContext.SetNotifier(null);
             DiagnosticStreamContext.SetCurrentStage(null);
-            Notify(onUpdated);
+            await NotifyAsync(onUpdated);
         }
     }
 
@@ -346,7 +352,18 @@ public sealed class DiagnosticSessionService
         }
     }
 
-    private static void Notify(Action? onUpdated) => onUpdated?.Invoke();
+    private static Task NotifyAsync(Func<Task>? onUpdated) =>
+        onUpdated?.Invoke() ?? Task.CompletedTask;
+
+    private static void ScheduleNotify(Func<Task>? onUpdated)
+    {
+        if (onUpdated is null)
+        {
+            return;
+        }
+
+        _ = onUpdated.Invoke();
+    }
 
     private OpsGuardOrchestrator ResolveOrchestrator()
     {

@@ -1,3 +1,5 @@
+using System.IO.Compression;
+using Microsoft.AspNetCore.ResponseCompression;
 using OpsGuard.App;
 using OpsGuard.App.DependencyInjection;
 using OpsGuard.App.Services;
@@ -25,8 +27,38 @@ builder.Configuration
 var topologyPath = OpsGuardContentRoot.ResolveTopologyPath(args, contentRoot);
 var conversationDir = ResolveConversationDirectory(builder.Configuration, contentRoot);
 
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.Providers.Add<BrotliCompressionProvider>();
+    options.Providers.Add<GzipCompressionProvider>();
+    options.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(["application/octet-stream"]);
+});
+
+builder.Services.Configure<BrotliCompressionProviderOptions>(options =>
+{
+    options.Level = CompressionLevel.Fastest;
+});
+
+builder.Services.Configure<GzipCompressionProviderOptions>(options =>
+{
+    options.Level = CompressionLevel.Fastest;
+});
+
 builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
+    .AddInteractiveServerComponents()
+    .AddCircuitOptions(options =>
+    {
+        options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromMinutes(10);
+        options.DisconnectedCircuitMaxRetained = 100;
+    })
+    .AddHubOptions(options =>
+    {
+        options.ClientTimeoutInterval = TimeSpan.FromSeconds(120);
+        options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+        options.MaximumReceiveMessageSize = 512 * 1024;
+        options.EnableDetailedErrors = builder.Environment.IsDevelopment();
+    });
 
 builder.Services.AddOpsGuard(builder.Configuration, topologyPath);
 builder.Services.Configure<ConversationStoreOptions>(options => options.Directory = conversationDir);
@@ -42,6 +74,7 @@ if (!app.Environment.IsDevelopment())
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
 }
 
+app.UseResponseCompression();
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 app.UseAntiforgery();
 

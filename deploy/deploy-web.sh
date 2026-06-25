@@ -27,7 +27,7 @@ fi
 echo "==> Ensure ASP.NET Core runtime on server"
 ssh -i "$SSH_KEY" -o BatchMode=yes "$HOST" "bash -s" <<'REMOTE'
 set -euo pipefail
-if ! /root/.dotnet/dotnet --list-runtimes 2>/dev/null | grep -q 'Microsoft.AspNetCore.App'; then
+if ! /root/.dotnet/dotnet --list-runtimes 2>/dev/null | grep -q 'Microsoft.AspNetCore.App 10'; then
   docker pull mcr.microsoft.com/dotnet/aspnet:10.0
   docker rm -f opsguard-dotnet-extract 2>/dev/null || true
   docker create --name opsguard-dotnet-extract mcr.microsoft.com/dotnet/aspnet:10.0
@@ -38,7 +38,12 @@ fi
 REMOTE
 
 echo "==> Install systemd unit + start service"
-ssh -i "$SSH_KEY" -o BatchMode=yes "$HOST" "chmod 600 $REMOTE_DIR/.env"
+if ssh -i "$SSH_KEY" -o BatchMode=yes "$HOST" "test -f $REMOTE_DIR/.env"; then
+  ssh -i "$SSH_KEY" -o BatchMode=yes "$HOST" "chmod 600 $REMOTE_DIR/.env"
+else
+  echo "ERROR: $REMOTE_DIR/.env not found on server. Create .env locally and re-run."
+  exit 1
+fi
 scp -i "$SSH_KEY" "$ROOT/deploy/opsguard-web.service" "$HOST:/etc/systemd/system/opsguard-web.service"
 
 ssh -i "$SSH_KEY" -o BatchMode=yes "$HOST" "bash -s" <<EOF

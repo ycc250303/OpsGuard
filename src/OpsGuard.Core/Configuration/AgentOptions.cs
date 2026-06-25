@@ -20,4 +20,7 @@ public sealed class AgentOptions
 
     /// <summary>自动发现时排除的容器名前缀。</summary>
     public string[] DockerDiscoveryExcludeNamePrefixes { get; set; } = ["opsguard-"];
+
+    /// <summary>Web 流式诊断 UI 刷新最小间隔（毫秒）。</summary>
+    public int StreamUiNotifyIntervalMs { get; set; } = 250;
 }

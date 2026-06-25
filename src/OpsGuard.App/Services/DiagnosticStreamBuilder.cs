@@ -9,6 +9,9 @@ internal sealed class DiagnosticStreamBuilder
 
     private readonly Dictionary<string, StringBuilder> _stageContent = new(StringComparer.Ordinal);
     private readonly HashSet<string> _startedStages = new(StringComparer.Ordinal);
+    private string? _cachedMarkdown;
+    private bool _cachedStreamingMode;
+    private bool _isDirty = true;
 
     public void Apply(DiagnosticChunk chunk)
     {
@@ -18,38 +21,54 @@ internal sealed class DiagnosticStreamBuilder
             _stageContent[chunk.Stage] = buffer;
         }
 
+        var changed = false;
+
         switch (chunk.Phase)
         {
             case DiagnosticChunkPhase.Started:
-                _startedStages.Add(chunk.Stage);
+                changed = _startedStages.Add(chunk.Stage);
                 break;
 
             case DiagnosticChunkPhase.Delta when !string.IsNullOrEmpty(chunk.Content):
                 buffer.Append(chunk.Content);
+                changed = true;
                 break;
 
             case DiagnosticChunkPhase.ToolInvoking when !string.IsNullOrWhiteSpace(chunk.ToolName):
                 buffer.AppendLine();
                 buffer.AppendLine($"> 🔧 调用 `{chunk.ToolName}` …");
+                changed = true;
                 break;
 
             case DiagnosticChunkPhase.ToolCompleted when !string.IsNullOrWhiteSpace(chunk.ToolName):
                 buffer.AppendLine($"> ✅ `{chunk.ToolName}` 完成");
                 buffer.AppendLine();
+                changed = true;
                 break;
 
             case DiagnosticChunkPhase.Completed when !string.IsNullOrWhiteSpace(chunk.Content):
                 if (buffer.Length == 0)
                 {
                     buffer.Append(chunk.Content.Trim());
+                    changed = true;
                 }
 
                 break;
+        }
+
+        if (changed)
+        {
+            _isDirty = true;
         }
     }
 
     public string BuildMarkdown(bool streaming)
     {
+        if (!_isDirty && _cachedMarkdown is not null && _cachedStreamingMode == streaming)
+        {
+            return _cachedMarkdown;
+        }
+
         var sb = new StringBuilder();
 
         foreach (var stage in StageOrder)
@@ -81,6 +100,8 @@ internal sealed class DiagnosticStreamBuilder
             }
         }
 
-        return sb.ToString().Trim();
+        _cachedStreamingMode = streaming;
+        _isDirty = false;
+        return _cachedMarkdown = sb.ToString().Trim();
     }
 }

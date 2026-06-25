@@ -7,26 +7,17 @@
 @inject DiagnosticSessionService Session
 @inject IUserModelSelection ModelSelection
 @inject WebAppInfo AppInfo
+@inject IJSRuntime JS
 @implements IDisposable
 
 <PageTitle>OpsGuard 运维诊断</PageTitle>
 
 <div class="ops-shell">
-    <div class="ops-atmosphere" aria-hidden="true">
+    <div class="ops-atmosphere ops-atmosphere--lite" aria-hidden="true">
         <span class="ops-orb orb-cyan"></span>
         <span class="ops-orb orb-amber"></span>
         <span class="ops-orb orb-blue"></span>
-        <span class="ops-particle p1"></span>
-        <span class="ops-particle p2"></span>
-        <span class="ops-particle p3"></span>
-        <span class="ops-particle p4"></span>
-        <span class="ops-particle p5"></span>
-        <span class="ops-particle p6"></span>
-        <span class="ops-grid-glow"></span>
         <span class="ops-scanline"></span>
-        <span class="ops-constellation c1"></span>
-        <span class="ops-constellation c2"></span>
-        <span class="ops-constellation c3"></span>
     </div>
 
     @if (Session.PersistenceEnabled)
@@ -144,9 +135,9 @@
                     </div>
                     <aside class="ops-mission-card" aria-label="诊断流程">
                         <div class="ops-core-orbit">
-                            <span></span>
-                            <span></span>
-                            <span></span>
+                            <span class="ops-orbit-runner ops-orbit-runner--1" aria-hidden="true"><i></i></span>
+                            <span class="ops-orbit-runner ops-orbit-runner--2" aria-hidden="true"><i></i></span>
+                            <span class="ops-orbit-runner ops-orbit-runner--3" aria-hidden="true"><i></i></span>
                         </div>
                         <dl>
                             <div>
@@ -178,9 +169,10 @@
                     </div>
                 </div>
 
-                @foreach (var message in Session.Messages)
+                @for (var index = 0; index < Session.Messages.Count; index++)
                 {
-                    <article class="ops-message @(message.IsUser ? "user" : "assistant")">
+                    var message = Session.Messages[index];
+                    <article @key="@($"msg-{index}-{message.At.Ticks}")" class="ops-message @(message.IsUser ? "user" : "assistant")">
                         <div class="ops-message-chrome">
                             <div class="ops-message-role">
                                 <span class="ops-message-avatar">@(message.IsUser ? "U" : "AI")</span>
@@ -200,16 +192,15 @@
                             {
                                 <div class="ops-message-body">@message.Content</div>
                             }
-                            else if (_isRunning && message == Session.Messages.Last())
+                            else if (_isRunning && index == Session.Messages.Count - 1)
                             {
-                                <div class="ops-message-body markdown streaming">
-                                    @((MarkupString)MarkdownRenderer.ToHtml(message.Content))
+                                <div @ref="_liveStreamHost" class="ops-message-body markdown streaming" data-live-stream="true">
                                     <span class="ops-cursor">▍</span>
                                 </div>
                             }
                             else
                             {
-                                <div class="ops-message-body markdown">@((MarkupString)MarkdownRenderer.ToHtml(message.Content))</div>
+                                <AssistantMessageBody Content="@message.Content" IsStreaming="false" />
                             }
                         </div>
                         <footer class="ops-message-footer">
@@ -239,8 +230,8 @@
                 <span>Command Input</span>
                 <span>Enter 发送 · Shift + Enter 换行</span>
             </div>
-            <textarea @bind="_input"
-                      @bind:event="oninput"
+            <textarea @ref="_inputRef"
+                      id="ops-command-input"
                       @onkeydown="HandleKeyDown"
                       @oncompositionstart="HandleCompositionStart"
                       @oncompositionend="HandleCompositionEnd"
@@ -253,7 +244,7 @@
                     <span>compose logs</span>
                     <span>host load</span>
                 </div>
-                <button type="button" class="btn-primary" @onclick="SendAsync" disabled="@(_isRunning || string.IsNullOrWhiteSpace(_input))">发送</button>
+                <button type="button" class="btn-primary" @onclick="SendAsync" disabled="@_isRunning">发送</button>
             </div>
         </footer>
     </div>
@@ -266,11 +257,13 @@
 
 @code {
     private ElementReference _chatContainer;
-    private string _input = string.Empty;
+    private ElementReference _inputRef;
     private string? _error;
     private bool _isRunning;
     private bool _isComposing;
     private bool _settingsOpen;
+    private ElementReference _liveStreamHost;
+    private bool _bindLiveStream;
     private CancellationTokenSource? _cts;
     private readonly string _machineName = OpsGuardRuntimeContext.Current().MachineName;
     private readonly string _osPlatform = OpsGuardRuntimeContext.Current().OsPlatform;
@@ -283,17 +276,28 @@
             await Session.InitializeAsync();
             StateHasChanged();
         }
+
+        if (_bindLiveStream)
+        {
+            _bindLiveStream = false;
+            await JS.InvokeVoidAsync("diagStream.bind", _liveStreamHost);
+        }
     }
 
     private void OpenSettings() => _settingsOpen = true;
 
     private void CloseSettings() => _settingsOpen = false;
 
-    private void UseFullInspectionPrompt() => _input = "检查本机和所有配置的 compose 服务";
+    private void UseFullInspectionPrompt() => _ = SetInputPromptAsync("检查本机和所有配置的 compose 服务");
 
-    private void UseBackendPrompt() => _input = "backend 容器运行正常吗？";
+    private void UseBackendPrompt() => _ = SetInputPromptAsync("backend 容器运行正常吗？");
 
-    private void UseGatewayPrompt() => _input = "web-gateway 健康检查失败";
+    private void UseGatewayPrompt() => _ = SetInputPromptAsync("web-gateway 健康检查失败");
+
+    private async Task SetInputPromptAsync(string prompt)
+    {
+        await JS.InvokeVoidAsync("opsInput.setValue", _inputRef, prompt);
+    }
 
     private Task SaveSettingsAsync(string modelId)
     {
@@ -346,14 +350,15 @@
     private async Task SendAsync()
     {
         _error = null;
-        var question = _input.Trim();
+        var question = await JS.InvokeAsync<string>("opsInput.getValue", _inputRef);
         if (question.Length == 0 || _isRunning)
         {
             return;
         }
 
-        _input = string.Empty;
+        await JS.InvokeVoidAsync("opsInput.clear", _inputRef);
         _isRunning = true;
+        _bindLiveStream = true;
         _cts = new CancellationTokenSource(TimeSpan.FromMinutes(15));
         StateHasChanged();
 
@@ -361,7 +366,7 @@
         {
             await Session.AskStreamingAsync(
                 question,
-                () => _ = InvokeAsync(StateHasChanged),
+                PushLiveStreamUpdateAsync,
                 _cts.Token);
         }
         catch (Exception ex)
@@ -370,11 +375,18 @@
         }
         finally
         {
+            await JS.InvokeVoidAsync("diagStream.unbind");
             _isRunning = false;
             _cts?.Dispose();
             _cts = null;
             StateHasChanged();
         }
+    }
+
+    private async Task PushLiveStreamUpdateAsync()
+    {
+        var markdown = Session.Messages.LastOrDefault(message => !message.IsUser)?.Content ?? string.Empty;
+        await JS.InvokeVoidAsync("diagStream.update", markdown);
     }
 
     private void HandleCompositionStart() => _isComposing = true;
@@ -391,6 +403,7 @@
 
     public void Dispose()
     {
+        _ = JS.InvokeVoidAsync("diagStream.unbind");
         _cts?.Cancel();
         _cts?.Dispose();
     }

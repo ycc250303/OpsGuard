@@ -28,4 +28,19 @@ public class StreamingMarkdownTests
         markdown.Should().Contain("## Analyzer");
         markdown.Should().Contain("初步");
     }
+
+    [Fact]
+    public void BuildMarkdown_ReusesCachedSnapshotUntilContentChanges()
+    {
+        var builder = new DiagnosticStreamBuilder();
+
+        builder.Apply(new DiagnosticChunk("Collector", DiagnosticChunkPhase.Started, null));
+        builder.Apply(new DiagnosticChunk("Collector", DiagnosticChunkPhase.Delta, "CPU 12%"));
+
+        var first = builder.BuildMarkdown(streaming: true);
+        var second = builder.BuildMarkdown(streaming: true);
+
+        first.Should().Be(second);
+        ReferenceEquals(first, second).Should().BeTrue();
+    }
 }
