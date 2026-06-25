@@ -12,11 +12,31 @@
 <PageTitle>OpsGuard 运维诊断</PageTitle>
 
 <div class="ops-shell">
+    <div class="ops-atmosphere" aria-hidden="true">
+        <span class="ops-orb orb-cyan"></span>
+        <span class="ops-orb orb-amber"></span>
+        <span class="ops-orb orb-blue"></span>
+        <span class="ops-particle p1"></span>
+        <span class="ops-particle p2"></span>
+        <span class="ops-particle p3"></span>
+        <span class="ops-particle p4"></span>
+        <span class="ops-particle p5"></span>
+        <span class="ops-particle p6"></span>
+        <span class="ops-grid-glow"></span>
+        <span class="ops-scanline"></span>
+        <span class="ops-constellation c1"></span>
+        <span class="ops-constellation c2"></span>
+        <span class="ops-constellation c3"></span>
+    </div>
+
     @if (Session.PersistenceEnabled)
     {
         <aside class="ops-sidebar">
             <div class="ops-sidebar-header">
-                <h2>会话</h2>
+                <div>
+                    <span class="ops-kicker">Session Vault</span>
+                    <h2>会话</h2>
+                </div>
                 <button type="button" class="btn-sidebar-new" @onclick="CreateSessionAsync" disabled="@_isRunning">新建</button>
             </div>
             <ul class="ops-session-list">
@@ -41,22 +61,61 @@
                     </li>
                 }
             </ul>
+            <div class="ops-sidebar-footer">
+                <span class="ops-kicker">Telemetry</span>
+                <div class="ops-mini-meter">
+                    <span style="--meter: 78%"></span>
+                </div>
+                <div class="ops-mini-grid">
+                    <span>Trace</span>
+                    <strong>Live</strong>
+                    <span>Queue</span>
+                    <strong>@Session.SessionSummaries.Count</strong>
+                </div>
+            </div>
         </aside>
     }
 
     <div class="ops-page">
         <header class="ops-header">
-            <div>
+            <div class="ops-title-block">
+                <span class="ops-kicker">Autonomous Infra Console</span>
                 <h1>OpsGuard</h1>
                 <p class="ops-subtitle">Linux 主机 + Docker Compose 运维诊断 Agent</p>
+                <div class="ops-signal-row" aria-label="系统能力">
+                    <span>Host Metrics</span>
+                    <span>Compose Topology</span>
+                    <span>Streaming Diagnosis</span>
+                </div>
             </div>
-            <div class="ops-meta">
-                <button type="button" class="btn-settings" @onclick="OpenSettings" disabled="@_isRunning" title="设置">
-                    <span class="ops-settings-icon" aria-hidden="true">⚙</span>
-                    设置
-                </button>
-                <span class="ops-model-badge">模型: @ModelSelection.ModelId</span>
-                <span class="ops-topology">本机: @_machineName (@_osPlatform)</span>
+            <div class="ops-command-deck">
+                <div class="ops-radar" aria-hidden="true">
+                    <span></span>
+                    <i></i>
+                    <b></b>
+                </div>
+                <div class="ops-meta">
+                    <button type="button" class="btn-settings" @onclick="OpenSettings" disabled="@_isRunning" title="设置">
+                        <span class="ops-settings-icon" aria-hidden="true">⚙</span>
+                        设置
+                    </button>
+                    <span class="ops-model-badge">模型: @ModelSelection.ModelId</span>
+                    <span class="ops-topology">本机: @_machineName (@_osPlatform)</span>
+                </div>
+                <div class="ops-vital-grid" aria-label="运行面板">
+                    <div>
+                        <span>Runtime</span>
+                        <strong>@(_isRunning ? "ACTIVE" : "STANDBY")</strong>
+                    </div>
+                    <div>
+                        <span>Sessions</span>
+                        <strong>@Session.SessionSummaries.Count</strong>
+                    </div>
+                    <div>
+                        <span>Stream</span>
+                        <strong>@(_isRunning ? "OPEN" : "IDLE")</strong>
+                    </div>
+                </div>
             </div>
         </header>
 
@@ -64,36 +123,99 @@
             @if (Session.Messages.Count == 0)
             {
                 <div class="ops-empty">
-                    <p>输入自然语言问题开始诊断，例如：</p>
-                    <ul>
-                        <li>检查本机和所有配置的 compose 服务</li>
-                        <li>backend 容器运行正常吗？</li>
-                        <li>web-gateway 健康检查失败</li>
-                    </ul>
-                    <p class="ops-hint">检测对象为<strong>运行本程序的服务器</strong>（读本地 Docker / Host 指标）。</p>
+                    <div class="ops-empty-copy">
+                        <span class="ops-kicker">Ready for triage</span>
+                        <h2>把故障现象直接丢进来，OpsGuard 会读取本机 Docker 与主机指标。</h2>
+                        <div class="ops-prompt-grid">
+                            <button type="button" @onclick="UseFullInspectionPrompt" disabled="@_isRunning">
+                                <strong>全量巡检</strong>
+                                <span>检查本机和所有配置的 compose 服务</span>
+                            </button>
+                            <button type="button" @onclick="UseBackendPrompt" disabled="@_isRunning">
+                                <strong>容器状态</strong>
+                                <span>backend 容器运行正常吗？</span>
+                            </button>
+                            <button type="button" @onclick="UseGatewayPrompt" disabled="@_isRunning">
+                                <strong>健康检查</strong>
+                                <span>web-gateway 健康检查失败</span>
+                            </button>
+                        </div>
+                        <p class="ops-hint">检测对象为<strong>运行本程序的服务器</strong>（读本地 Docker / Host 指标）。</p>
+                    </div>
+                    <aside class="ops-mission-card" aria-label="诊断流程">
+                        <div class="ops-core-orbit">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                        </div>
+                        <dl>
+                            <div>
+                                <dt>01</dt>
+                                <dd>Collect host signals</dd>
+                            </div>
+                            <div>
+                                <dt>02</dt>
+                                <dd>Map compose topology</dd>
+                            </div>
+                            <div>
+                                <dt>03</dt>
+                                <dd>Stream agent reasoning</dd>
+                            </div>
+                        </dl>
+                        <div class="ops-spectrum">
+                            <span></span><span></span><span></span><span></span><span></span><span></span>
+                        </div>
+                    </aside>
                 </div>
             }
             else
             {
+                <div class="ops-feed-header">
+                    <span class="ops-kicker">Diagnostic Stream</span>
+                    <div>
+                        <span>@Session.Messages.Count messages</span>
+                        <span>@(_isRunning ? "Agent running" : "Review mode")</span>
+                    </div>
+                </div>
+
                 @foreach (var message in Session.Messages)
                 {
                     <article class="ops-message @(message.IsUser ? "user" : "assistant")">
-                        @if (message.IsUser)
-                        {
-                            <div class="ops-message-body">@message.Content</div>
-                        }
-                        else if (_isRunning && message == Session.Messages.Last())
-                        {
-                            <div class="ops-message-body markdown streaming">
-                                @((MarkupString)MarkdownRenderer.ToHtml(message.Content))
-                                <span class="ops-cursor">▍</span>
+                        <div class="ops-message-chrome">
+                            <div class="ops-message-role">
+                                <span class="ops-message-avatar">@(message.IsUser ? "U" : "AI")</span>
+                                <div>
+                                    <strong>@(message.IsUser ? "Operator" : "OpsGuard Agent")</strong>
+                                    <small>@(message.IsUser ? "Manual command" : (_isRunning && message == Session.Messages.Last() ? "Streaming analysis" : "Diagnostic report"))</small>
+                                </div>
                             </div>
-                        }
-                        else
-                        {
-                            <div class="ops-message-body markdown">@((MarkupString)MarkdownRenderer.ToHtml(message.Content))</div>
-                        }
-                        <time class="ops-message-time">@message.At.ToLocalTime().ToString("HH:mm:ss")</time>
+                            <div class="ops-message-status" aria-hidden="true">
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                            </div>
+                        </div>
+                        <div class="ops-message-panel">
+                            @if (message.IsUser)
+                            {
+                                <div class="ops-message-body">@message.Content</div>
+                            }
+                            else if (_isRunning && message == Session.Messages.Last())
+                            {
+                                <div class="ops-message-body markdown streaming">
+                                    @((MarkupString)MarkdownRenderer.ToHtml(message.Content))
+                                    <span class="ops-cursor">▍</span>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="ops-message-body markdown">@((MarkupString)MarkdownRenderer.ToHtml(message.Content))</div>
+                            }
+                        </div>
+                        <footer class="ops-message-footer">
+                            <span>@(message.IsUser ? "USER_TX" : "AGENT_RX")</span>
+                            <time class="ops-message-time">@message.At.ToLocalTime().ToString("HH:mm:ss")</time>
+                        </footer>
                     </article>
                 }
             }
@@ -113,6 +235,10 @@
         }
 
         <footer class="ops-input-bar">
+            <div class="ops-input-label">
+                <span>Command Input</span>
+                <span>Enter 发送 · Shift + Enter 换行</span>
+            </div>
             <textarea @bind="_input"
                       @bind:event="oninput"
                       @onkeydown="HandleKeyDown"
@@ -122,6 +248,11 @@
                       rows="2"
                       disabled="@_isRunning"></textarea>
             <div class="ops-actions">
+                <div class="ops-command-chips" aria-hidden="true">
+                    <span>docker ps</span>
+                    <span>compose logs</span>
+                    <span>host load</span>
+                </div>
                 <button type="button" class="btn-primary" @onclick="SendAsync" disabled="@(_isRunning || string.IsNullOrWhiteSpace(_input))">发送</button>
             </div>
         </footer>
@@ -157,6 +288,12 @@
     private void OpenSettings() => _settingsOpen = true;
 
     private void CloseSettings() => _settingsOpen = false;
+
+    private void UseFullInspectionPrompt() => _input = "检查本机和所有配置的 compose 服务";
+
+    private void UseBackendPrompt() => _input = "backend 容器运行正常吗？";
+
+    private void UseGatewayPrompt() => _input = "web-gateway 健康检查失败";
 
     private Task SaveSettingsAsync(string modelId)
     {
