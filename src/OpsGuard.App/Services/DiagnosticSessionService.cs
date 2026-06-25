@@ -150,7 +150,7 @@ public sealed class DiagnosticSessionService
         IsRunning = true;
         _messages.Add(ChatMessage.User(userInput));
         var assistantIndex = _messages.Count;
-        _messages.Add(ChatMessage.Assistant(string.Empty));
+        _messages.Add(ChatMessage.Assistant(string.Empty, _messages[^1].At.AddTicks(1)));
         await NotifyAsync(onUpdated);
 
         var streamBuilder = new DiagnosticStreamBuilder();
@@ -186,7 +186,7 @@ public sealed class DiagnosticSessionService
 
             lastNotifyAt = now;
             lastNotifiedMarkdown = markdown;
-            _messages[assistantIndex] = ChatMessage.Assistant(markdown);
+            _messages[assistantIndex] = ChatMessage.Assistant(markdown, _messages[assistantIndex].At);
             ScheduleNotify(onUpdated);
         }
 
@@ -216,7 +216,7 @@ public sealed class DiagnosticSessionService
                 DiagnosticStreamContext.SetNotifier(null);
             }
 
-            _messages[assistantIndex] = ChatMessage.Assistant(streamBuilder.BuildMarkdown(streaming: false));
+            _messages[assistantIndex] = ChatMessage.Assistant(streamBuilder.BuildMarkdown(streaming: false), _messages[assistantIndex].At);
             await NotifyAsync(onUpdated);
 
             var finalContent = _messages[assistantIndex].Content;
@@ -231,7 +231,7 @@ public sealed class DiagnosticSessionService
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             var error = $"诊断超时（{_agentOptions.OrchestrationTimeoutMinutes} 分钟），请缩小问题范围后重试。";
-            _messages[assistantIndex] = ChatMessage.Assistant(error);
+            _messages[assistantIndex] = ChatMessage.Assistant(error, _messages[assistantIndex].At);
             _chatHistory.AddAssistantMessage(error);
             await NotifyAsync(onUpdated);
             await PersistCurrentSessionAsync(userInput, cancellationToken);
@@ -240,7 +240,7 @@ public sealed class DiagnosticSessionService
         catch (Exception ex)
         {
             var error = $"诊断失败: {ex.Message}";
-            _messages[assistantIndex] = ChatMessage.Assistant(error);
+            _messages[assistantIndex] = ChatMessage.Assistant(error, _messages[assistantIndex].At);
             _chatHistory.AddAssistantMessage(error);
             await NotifyAsync(onUpdated);
             await PersistCurrentSessionAsync(userInput, cancellationToken);
@@ -380,9 +380,10 @@ public sealed class DiagnosticSessionService
 
 public sealed record ChatMessage(string Role, string Content, DateTimeOffset At)
 {
-    public static ChatMessage User(string content) => new("user", content, DateTimeOffset.Now);
+    public static ChatMessage User(string content) => new("user", content, DateTimeOffset.UtcNow);
 
-    public static ChatMessage Assistant(string content) => new("assistant", content, DateTimeOffset.Now);
+    public static ChatMessage Assistant(string content, DateTimeOffset? at = null) =>
+        new("assistant", content, at ?? DateTimeOffset.UtcNow);
 
     public bool IsUser => Role == "user";
 }

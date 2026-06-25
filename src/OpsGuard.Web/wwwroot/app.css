@@ -2836,13 +2836,14 @@ body:has(.ops-atmosphere--lite)::after {
     animation-delay: -1.45s;
 }
 
-/* 历史消息延迟渲染，长会话滚动更顺 */
-.ops-message {
+/* 历史助手消息延迟渲染；用户消息与当前流式消息保持即时绘制 */
+.ops-message.assistant:not(:last-child) {
     content-visibility: auto;
     contain-intrinsic-size: auto 12rem;
     contain: layout style paint;
 }
 
-.ops-message:last-child {
+.ops-message.user,
+.ops-message.assistant:last-child {
     content-visibility: visible;
 }

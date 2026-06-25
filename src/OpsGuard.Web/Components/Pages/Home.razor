@@ -172,7 +172,7 @@
                 @for (var index = 0; index < Session.Messages.Count; index++)
                 {
                     var message = Session.Messages[index];
-                    <article @key="@($"msg-{index}-{message.At.Ticks}")" class="ops-message @(message.IsUser ? "user" : "assistant")">
+                    <article @key="@($"{message.Role}-{index}-{message.At.ToUnixTimeMilliseconds()}")" class="ops-message @(message.IsUser ? "user" : "assistant")">
                         <div class="ops-message-chrome">
                             <div class="ops-message-role">
                                 <span class="ops-message-avatar">@(message.IsUser ? "U" : "AI")</span>
@@ -264,6 +264,7 @@
     private bool _settingsOpen;
     private ElementReference _liveStreamHost;
     private bool _bindLiveStream;
+    private bool _streamListSynced;
     private CancellationTokenSource? _cts;
     private readonly string _machineName = OpsGuardRuntimeContext.Current().MachineName;
     private readonly string _osPlatform = OpsGuardRuntimeContext.Current().OsPlatform;
@@ -357,16 +358,16 @@
         }
 
         await JS.InvokeVoidAsync("opsInput.clear", _inputRef);
+        _streamListSynced = false;
         _isRunning = true;
         _bindLiveStream = true;
         _cts = new CancellationTokenSource(TimeSpan.FromMinutes(15));
-        StateHasChanged();
 
         try
         {
             await Session.AskStreamingAsync(
                 question,
-                PushLiveStreamUpdateAsync,
+                OnDiagnosticUpdatedAsync,
                 _cts.Token);
         }
         catch (Exception ex)
@@ -381,6 +382,18 @@
             _cts = null;
             StateHasChanged();
         }
+    }
+
+    private async Task OnDiagnosticUpdatedAsync()
+    {
+        if (!_streamListSynced)
+        {
+            _streamListSynced = true;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        await PushLiveStreamUpdateAsync();
     }
 
     private async Task PushLiveStreamUpdateAsync()
